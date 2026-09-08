@@ -29,28 +29,41 @@ public:
     std::vector<unsigned int> indices;
     std::vector<Texture> textures;
 
+    // 🌟 记录材质名称，方便后期调试和精确控制
+    std::string materialName;
+
     // 🌟 新增：网格专属的包围盒
     AABB boundingBox;
 
-    // 🌟 修改：构造函数接收计算好的 AABB
-    Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures, AABB box)
+    // 🌟 新增：材质分类标记
+    bool isTransparent = false; 
+    bool isEmissive = false;
+    bool isMasked = false; // 🌟 新增：遮罩材质标记
+
+    // 🌟 玻璃材质专属参数
+    float glassAlpha = 0.35f;      // 基础透明度
+    float glassRoughness = 0.08f;  // 极低粗糙度
+
+    // 🌟 新增：接收从 Assimp 传来的 UV 缩放值
+    glm::vec2 uvTiling = glm::vec2(1.0f, 1.0f);
+
+    // 🌟 构造函数新增 materialName 参数
+    Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures, std::string matName, AABB box, bool transparent = false, bool emissive = false, bool masked = false, float glassAlp = 0.35f, float glassRough = 0.08f, glm::vec2 tiling = glm::vec2(1.0f, 1.0f))
     {
         this->vertices = vertices;
         this->indices = indices;
         this->textures = textures;
-        this->boundingBox = box; // 保存下来
+        this->materialName = matName; // 保存材质名
+        this->boundingBox = box;
+        this->isTransparent = transparent; 
+        this->isEmissive = emissive;
+        this->isMasked = masked;
+        this->glassAlpha = glassAlp;
+        this->glassRoughness = glassRough;
+        this->uvTiling = tiling; // 👈 新增赋值
 
         setupMesh();
     }
-
-    // Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures)
-    // {
-    //     this->vertices = vertices;
-    //     this->indices = indices;
-    //     this->textures = textures;
-
-    //     setupMesh();
-    // }
 
     void Draw(const Shader& shader)
     {
@@ -83,46 +96,85 @@ public:
 
     void DrawPBR(const Shader& shader) const
     {
+        // =================================================================
+        // 🌟🌟🌟 终极修复 0：物理清空纹理槽位，斩断“幽灵绑定”！🌟🌟🌟
+        // 只要当前 Mesh 没有该贴图，这里绑定的 0 就会告诉 OpenGL 和 RenderDoc：这个槽位是空的！
+        // =================================================================
+        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, 0);
+
+        // =================================================================
+        // 🌟🌟🌟 核心修复 1：清空 Shader 状态
+        // =================================================================
+        shader.setBool("useAlbedoMap", false);
+        shader.setBool("useNormalMap", false);
+        shader.setBool("usePackedMap", false);   
+        shader.setBool("useEmissiveMap", false);
+        shader.setBool("useMetalMap", false);
+        shader.setBool("useRoughnessMap", false);
+        shader.setBool("useAOMap", false);
+
+        // 设置安全的默认值 (防止没有贴图的物体变成死黑或无限反光)
+        shader.setVec3("albedoValue", glm::vec3(0.5f));
+        shader.setFloat("metalValue", 0.0f);     // 👈 核心修复 2：名字必须是 metalValue
+        shader.setFloat("roughnessValue", isTransparent ? glassRoughness : 0.65f);
+        shader.setFloat("aoValue", 1.0f);        // 👈 核心修复 3：默认 AO 必须是 1.0 (白)，不能是 0！
+        
         bool hasDiffuse = false;
         bool hasNormal = false;
+        bool hasEmissive = false;
+        bool hasORM = false;      
         
-        // 自动桥接 Assimp 读取出来的贴图，喂给我们的 G-Buffer Shader
+        // 1. 🌟 预先定死所有贴图的采样器槽位 (Slot)，杜绝互相顶替！
+        shader.setInt("albedoMap", 0);
+        shader.setInt("normalMap", 1);
+        shader.setInt("metallicMap", 2);
+        shader.setInt("emissiveMap", 3);
+
+        // 2. 🌟 遍历贴图时，不再使用 + i，而是对号入座绑定到指定的 GL_TEXTUREX
         for(unsigned int i = 0; i < textures.size(); i++)
         {
-            glActiveTexture(GL_TEXTURE0 + i);
             std::string name = textures[i].type;
-            
+
             if(name == "texture_diffuse") {
-                shader.setInt("albedoMap", i);
+                glActiveTexture(GL_TEXTURE0); // 👈 定死在 0 号槽
                 shader.setBool("useAlbedoMap", true);
+                glBindTexture(GL_TEXTURE_2D, textures[i].id);
                 hasDiffuse = true;
             }
             else if(name == "texture_normal" || name == "texture_height") {
-                shader.setInt("normalMap", i);
+                glActiveTexture(GL_TEXTURE1); // 👈 定死在 1 号槽
                 shader.setBool("useNormalMap", true);
+                glBindTexture(GL_TEXTURE_2D, textures[i].id);
                 hasNormal = true;
             }
-            glBindTexture(GL_TEXTURE_2D, textures[i].id);
+            else if (name == "texture_orm" || name == "texture_metalness" || name == "texture_metallic" || name == "texture_roughness") {
+                glActiveTexture(GL_TEXTURE2); // 👈 定死在 2 号槽
+                shader.setBool("usePackedMap", true);
+                glBindTexture(GL_TEXTURE_2D, textures[i].id);
+                hasORM = true;
+            }
+            else if(name == "texture_emissive") { 
+                glActiveTexture(GL_TEXTURE3); // 👈 定死在 3 号槽
+                shader.setBool("useEmissiveMap", true);
+                glBindTexture(GL_TEXTURE_2D, textures[i].id);
+                hasEmissive = true;
+            }
         }
         
-        // 如果模型缺少贴图，给它一个安全的默认值防止黑屏
-        if(!hasDiffuse) {
-            shader.setBool("useAlbedoMap", false);
-            shader.setVec3("albedoValue", glm::vec3(0.5f)); // 默认灰色
-        }
-        if(!hasNormal) {
-            shader.setBool("useNormalMap", false);
-        }
+        shader.setBool("isGlassMaterial", isTransparent);
+        shader.setFloat("glassAlpha", glassAlpha);
+        shader.setFloat("glassRoughness", glassRoughness);
         
-        // 关闭特殊的 ORM 贴图，使用模型自带的标准材质
-        shader.setBool("usePackedMap", false);
-        shader.setBool("useMetalMap", false);
-        shader.setFloat("metalValue", 0.0f);
-        shader.setBool("useRoughnessMap", false);
-        shader.setFloat("roughnessValue", 0.7f); // 默认粗糙一点
-        shader.setBool("useAOMap", false);
-        shader.setFloat("aoValue", 1.0f);
-        shader.setVec2("uvTiling", glm::vec2(1.0f, 1.0f)); // 模型自带 UV 不缩放
+        // 我们已经在顶部设置了默认值，所以这里的判定只需要关注业务逻辑
+        // (旧代码这里的 uniform 名字全部写错了，已经被我在顶部修复)
+
+        // 🌟 核心修复：使用模型读取的真实 Tiling，不再写死 1.0f
+        shader.setVec2("uvTiling", this->uvTiling);
+        shader.setBool("isMasked", isMasked);
+        shader.setFloat("alphaCutoff", 0.5f);
         
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);

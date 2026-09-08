@@ -1,119 +1,68 @@
 #version 430 core
 
-struct Particle
-{
-    vec4 Position;
-    vec4 Velocity;
+struct Particle { vec4 Position; vec4 Velocity; };
+layout (std430, binding = 0) buffer ParticleBuffer { Particle particles[]; };
+
+layout (std140) uniform Matrices {
+    mat4 projection; mat4 view; mat4 cleanProj; mat4 prevProj; mat4 prevView;   
 };
 
-layout (std430, binding = 0) buffer ParticleBuffer
-{
-    Particle particles[];
-};
-
-// 🌟🌟🌟 新增：把 21 盏灯的 SSBO 也接进来！
-struct Light
-{
-    vec4 Position; // w: Radius
-    vec4 Color;    // w: Intensity
-};
-
-layout (std430, binding = 1) buffer LightBuffer
-{
-    Light lights[];
-};
-
-uniform int activePointLightsCount; // C++ 传进来的灯光总数
-
-layout (std140) uniform Matrices
-{
-    mat4 projection;
-    mat4 view;
-};
-
-// 同样需要传入时间，保证算风力拉伸时一致
 uniform float time;
-
-// 🌟 新增：摄像机位置
 uniform vec3 cameraPos;
 
-// 传递给片元着色器的变量
-out vec3 ParticleColor;
-out float ParticleAlpha;
+out vec2 ParticleUV;
+out float IsSplash;
+out vec3 WorldPos; 
 
 void main()
 {
-    // 🌟 经典回归：一个粒子拆成 2 个顶点，一头一尾画成一条线！
-    uint particleIndex = gl_VertexID / 2;
-    uint isTail = gl_VertexID % 2; 
+    uint particleIndex = gl_VertexID / 6;
+    uint vertexIndex = gl_VertexID % 6; 
 
     Particle p = particles[particleIndex];
-    vec3 pos = p.Position.xyz;
+    vec3 basePos = p.Position.xyz;
     float state = p.Position.w; 
-    float lifeTime = p.Velocity.w; 
     
-    // 距离淡出，防止远处的雨闪烁
-    float dist = distance(cameraPos, pos);
-    float fade = 1.0 - smoothstep(10.0, 80.0, dist);
+    vec2 uvs[6] = vec2[](
+        vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
+        vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 1.0)
+    );
+    ParticleUV = uvs[vertexIndex];
 
-    // ==========================================
-    // 🎨 动态光照：霓虹染色 (保持我们的神级打光)
-    // ==========================================
-    // 🌟 调优 1：降低环境基础冷色，让没有灯光的地方雨水更加低调隐蔽
-    vec3 rainIllumination = vec3(0.02, 0.04, 0.08); 
+    vec3 viewDir = normalize(cameraPos - basePos);
+    vec3 upDir; vec3 rightDir;
+    float width = 0.0; float height = 0.0;
 
-    for(int j = 0; j < activePointLightsCount; ++j) 
+    if (state < 0.5) // 下落雨丝
     {
-        vec3 lightPos = lights[j].Position.xyz;
-        float radius = lights[j].Position.w;
-        vec3 lightCol = lights[j].Color.xyz;
-        float intensity = lights[j].Color.w;
+        IsSplash = 0.0;
+        // 🌟 关键修正：直接使用粒子真实速度（已包含动态风力）
+        vec3 vel = p.Velocity.xyz;
+        float speed = length(vel);
+        if (speed < 0.01) speed = 25.0; // 防止静止粒子
 
-        float distToLight = distance(pos, lightPos);
+        upDir = normalize(-vel);                  // 拉伸方向 = 运动反方向
+        rightDir = normalize(cross(viewDir, upDir));
 
-        if (distToLight < radius) 
-        {
-            float attenuation = 1.0 / (distToLight * distToLight + 1.0);
-            float factor = (distToLight * distToLight) / (radius * radius);
-            float falloff = clamp(1.0 - factor * factor, 0.0, 1.0);
-            
-            // 🌟 调优 2：稍微压暗霓虹灯的染色乘数，防止过亮变成发光棒
-            rainIllumination += lightCol * (intensity * 0.08) * attenuation * falloff;
-        }
+        width = 0.01;                             // 加宽，原来 0.005 太细
+        height = speed * 0.035;                   // 长度与速度成正比，保证视觉连贯
     }
-    ParticleColor = rainIllumination;
-
-    // ==========================================
-    // 📐 物理形态拉伸 (Motion Blur 几何化)
-    // ==========================================
-    if (state < 0.5) 
+    else // 飞溅
     {
-        // 🌧️ 表现 0：下落的雨丝
-        float windStrength = 15.0 + sin(time * 2.0) * 5.0;
-        vec3 windDir = vec3(1.0, 0.0, -0.2);
-        vec3 currentVelocity = vec3(0.0, -25.0, 0.0) + windDir * windStrength;
+        IsSplash = 1.0;
+        vec3 vel = p.Velocity.xyz;
+        float speed = length(vel);
+        upDir = normalize(vel);                  // 飞溅方向
+        rightDir = normalize(cross(viewDir, upDir));
 
-        if (isTail == 1u) {
-            // 🌟 调优 3：大幅缩短雨丝的物理长度！从 0.06 降到 0.025，使其变回秀气的细雨
-            float streakLength = 0.025; 
-            pos -= currentVelocity * streakLength;
-        }
-
-        // 🌟 调优 4：降低雨滴的基础透明度！从 0.6 降到 0.25，恢复半透明水质感
-        ParticleAlpha = (isTail == 1u ? 0.0 : 0.25) * fade;
-    }
-    else 
-    {
-        // 💦 表现 1：砸在地上弹起的微小水针！(极其真实)
-        if (isTail == 1u) {
-            // 保持水针短短的炸开感
-            pos -= p.Velocity.xyz * 0.015; 
-        }
-
-        // 🌟 调优 5：稍微压低水花弹射的透明度，避免抢占过多视线
-        float splashAlpha = smoothstep(0.0, 0.15, lifeTime) * 0.8; 
-        ParticleAlpha = (isTail == 1u ? 0.0 : splashAlpha) * fade;
+        width = 0.012;                           // 飞溅稍宽
+        height = clamp(speed * 0.02, 0.03, 0.18);
     }
 
-    gl_Position = projection * view * vec4(pos, 1.0);
+    // 构建四边形顶点
+    vec2 quadPos = ParticleUV * 2.0 - 1.0;
+    basePos += rightDir * quadPos.x * width + upDir * quadPos.y * height;
+
+    WorldPos = basePos;
+    gl_Position = cleanProj * view * vec4(basePos, 1.0);
 }

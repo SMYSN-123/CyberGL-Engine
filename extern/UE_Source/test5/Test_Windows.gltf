@@ -1,0 +1,796 @@
+{
+	"asset":
+	{
+		"version": "2.0",
+		"generator": "Unreal Engine 5.7.4"
+	},
+	"scene": 0,
+	"accessors": [
+		{
+			"bufferView": 0,
+			"count": 72,
+			"type": "SCALAR",
+			"componentType": 5121
+		},
+		{
+			"bufferView": 1,
+			"count": 66,
+			"type": "VEC3",
+			"componentType": 5126,
+			"min": [
+				0,
+				-4.88762026e-08,
+				-0.300000489
+			],
+			"max": [
+				5,
+				3,
+				-0
+			]
+		},
+		{
+			"bufferView": 2,
+			"count": 66,
+			"type": "VEC3",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 3,
+			"count": 66,
+			"type": "VEC4",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 4,
+			"count": 66,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 5,
+			"count": 66,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 6,
+			"count": 66,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 7,
+			"count": 2580,
+			"type": "SCALAR",
+			"componentType": 5123
+		},
+		{
+			"bufferView": 8,
+			"count": 1868,
+			"type": "VEC3",
+			"componentType": 5126,
+			"min": [
+				0,
+				0.900000036,
+				-0.306955516
+			],
+			"max": [
+				5,
+				2.50999975,
+				0.0599998571
+			]
+		},
+		{
+			"bufferView": 9,
+			"count": 1868,
+			"type": "VEC3",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 10,
+			"count": 1868,
+			"type": "VEC4",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 11,
+			"count": 1868,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 12,
+			"count": 1868,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 13,
+			"count": 1868,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 14,
+			"count": 144,
+			"type": "SCALAR",
+			"componentType": 5121
+		},
+		{
+			"bufferView": 15,
+			"count": 88,
+			"type": "VEC3",
+			"componentType": 5126,
+			"min": [
+				0.219999894,
+				1.10000002,
+				-0.0950003639
+			],
+			"max": [
+				4.77999973,
+				2.26747656,
+				-0.0650001764
+			]
+		},
+		{
+			"bufferView": 16,
+			"count": 88,
+			"type": "VEC3",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 17,
+			"count": 88,
+			"type": "VEC4",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 18,
+			"count": 88,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 19,
+			"count": 88,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 20,
+			"count": 88,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 21,
+			"count": 30,
+			"type": "SCALAR",
+			"componentType": 5121
+		},
+		{
+			"bufferView": 22,
+			"count": 28,
+			"type": "VEC3",
+			"componentType": 5126,
+			"min": [
+				0.149999976,
+				0.699999928,
+				-0.700000465
+			],
+			"max": [
+				4.8499999,
+				2.70000005,
+				-0.282517076
+			]
+		},
+		{
+			"bufferView": 23,
+			"count": 28,
+			"type": "VEC3",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 24,
+			"count": 28,
+			"type": "VEC4",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 25,
+			"count": 28,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 26,
+			"count": 28,
+			"type": "VEC2",
+			"componentType": 5126
+		},
+		{
+			"bufferView": 27,
+			"count": 28,
+			"type": "VEC2",
+			"componentType": 5126
+		}
+	],
+	"buffers": [
+		{
+			"uri": "Test_Windows.bin",
+			"byteLength": 136608
+		}
+	],
+	"bufferViews": [
+		{
+			"buffer": 0,
+			"byteLength": 72,
+			"target": 34963
+		},
+		{
+			"buffer": 0,
+			"byteLength": 792,
+			"byteOffset": 72,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 792,
+			"byteOffset": 864,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 1056,
+			"byteOffset": 1656,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 528,
+			"byteOffset": 2712,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 528,
+			"byteOffset": 3240,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 528,
+			"byteOffset": 3768,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 5160,
+			"byteOffset": 4296,
+			"target": 34963
+		},
+		{
+			"buffer": 0,
+			"byteLength": 22416,
+			"byteOffset": 9456,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 22416,
+			"byteOffset": 31872,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 29888,
+			"byteOffset": 54288,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 14944,
+			"byteOffset": 84176,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 14944,
+			"byteOffset": 99120,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 14944,
+			"byteOffset": 114064,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 144,
+			"byteOffset": 129008,
+			"target": 34963
+		},
+		{
+			"buffer": 0,
+			"byteLength": 1056,
+			"byteOffset": 129152,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 1056,
+			"byteOffset": 130208,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 1408,
+			"byteOffset": 131264,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 704,
+			"byteOffset": 132672,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 704,
+			"byteOffset": 133376,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 704,
+			"byteOffset": 134080,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 30,
+			"byteOffset": 134784,
+			"target": 34963
+		},
+		{
+			"buffer": 0,
+			"byteLength": 336,
+			"byteOffset": 134816,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 336,
+			"byteOffset": 135152,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 448,
+			"byteOffset": 135488,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 224,
+			"byteOffset": 135936,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 224,
+			"byteOffset": 136160,
+			"target": 34962
+		},
+		{
+			"buffer": 0,
+			"byteLength": 224,
+			"byteOffset": 136384,
+			"target": 34962
+		}
+	],
+	"images": [
+		{
+			"uri": "MI_Wall_Plaster_04_Set_02_Wall_Windows_3m_42_BaseColor.png"
+		},
+		{
+			"uri": "MI_Wall_Plaster_04_Set_02_Wall_Windows_3m_42_MetallicRoughness.png"
+		},
+		{
+			"uri": "MI_Wall_Plaster_04_Set_02_Wall_Windows_3m_42_Normal.png"
+		},
+		{
+			"uri": "MI_Window_Frames_Set_02_Wall_Windows_3m_42_BaseColor.png"
+		},
+		{
+			"uri": "MI_Window_Frames_Set_02_Wall_Windows_3m_42_MetallicRoughness.png"
+		},
+		{
+			"uri": "MI_Window_Frames_Set_02_Wall_Windows_3m_42_Normal.png"
+		},
+		{
+			"uri": "MI_Window_Frames_Set_02_Wall_Windows_3m_42_Occlusion.png"
+		},
+		{
+			"uri": "MI_Windows_Modular_Set_02_Wall_Windows_3m_42_BaseColor.png"
+		},
+		{
+			"uri": "MI_Windows_Modular_Set_02_Wall_Windows_3m_42_Normal.png"
+		},
+		{
+			"uri": "MI_Interior_01_Off_Set_02_Wall_Windows_3m_42_BaseColor.png"
+		}
+	],
+	"materials": [
+		{
+			"name": "MI_Wall_Plaster_04_Set_02_Wall_Windows_3m_42",
+			"pbrMetallicRoughness":
+			{
+				"baseColorTexture":
+				{
+					"index": 0,
+					"texCoord": 2,
+					"extensions":
+					{
+						"KHR_texture_transform":
+						{
+							"offset": [
+								-0.0226965453,
+								-0.502971768
+							],
+							"scale": [
+								1.88522279,
+								1.52154529
+							]
+						}
+					}
+				},
+				"metallicRoughnessTexture":
+				{
+					"index": 1,
+					"texCoord": 2,
+					"extensions":
+					{
+						"KHR_texture_transform":
+						{
+							"offset": [
+								-0.0226965453,
+								-0.502971768
+							],
+							"scale": [
+								1.88522279,
+								1.52154529
+							]
+						}
+					}
+				}
+			},
+			"normalTexture":
+			{
+				"index": 2,
+				"texCoord": 2,
+				"extensions":
+				{
+					"KHR_texture_transform":
+					{
+						"offset": [
+							-0.0226965453,
+							-0.502971768
+						],
+						"scale": [
+							1.88522279,
+							1.52154529
+						]
+					}
+				}
+			},
+			"alphaMode": "MASK",
+			"alphaCutoff": 0.333299994
+		},
+		{
+			"name": "MI_Window_Frames_Set_02_Wall_Windows_3m_42",
+			"pbrMetallicRoughness":
+			{
+				"baseColorTexture":
+				{
+					"index": 3,
+					"texCoord": 2,
+					"extensions":
+					{
+						"KHR_texture_transform":
+						{
+							"offset": [
+								-0.0123383431,
+								-0.0145436311
+							],
+							"scale": [
+								1.0248487,
+								1.02708125
+							]
+						}
+					}
+				},
+				"metallicRoughnessTexture":
+				{
+					"index": 4,
+					"texCoord": 2,
+					"extensions":
+					{
+						"KHR_texture_transform":
+						{
+							"offset": [
+								-0.0123383431,
+								-0.0145436311
+							],
+							"scale": [
+								1.0248487,
+								1.02708125
+							]
+						}
+					}
+				}
+			},
+			"normalTexture":
+			{
+				"index": 5,
+				"texCoord": 2,
+				"extensions":
+				{
+					"KHR_texture_transform":
+					{
+						"offset": [
+							-0.0123383431,
+							-0.0145436311
+						],
+						"scale": [
+							1.0248487,
+							1.02708125
+						]
+					}
+				}
+			},
+			"occlusionTexture":
+			{
+				"index": 6,
+				"texCoord": 2,
+				"extensions":
+				{
+					"KHR_texture_transform":
+					{
+						"offset": [
+							-0.0123383431,
+							-0.0145436311
+						],
+						"scale": [
+							1.0248487,
+							1.02708125
+						]
+					}
+				}
+			},
+			"alphaMode": "MASK",
+			"alphaCutoff": 0.333299994
+		},
+		{
+			"name": "MI_Windows_Modular_Set_02_Wall_Windows_3m_42",
+			"pbrMetallicRoughness":
+			{
+				"baseColorTexture":
+				{
+					"index": 7,
+					"texCoord": 2,
+					"extensions":
+					{
+						"KHR_texture_transform":
+						{
+							"offset": [
+								-0.249555424,
+								-0.304109573
+							],
+							"scale": [
+								1.61865246,
+								1.3202256
+							]
+						}
+					}
+				},
+				"roughnessFactor": 0
+			},
+			"normalTexture":
+			{
+				"index": 8,
+				"texCoord": 2,
+				"extensions":
+				{
+					"KHR_texture_transform":
+					{
+						"offset": [
+							-0.249555424,
+							-0.304109573
+						],
+						"scale": [
+							1.61865246,
+							1.3202256
+						]
+					}
+				}
+			},
+			"alphaMode": "BLEND",
+			"extensions":
+			{
+				"KHR_materials_ior":
+				{
+					"ior": 1.20283008
+				}
+			}
+		},
+		{
+			"name": "MI_Interior_01_Off_Set_02_Wall_Windows_3m_42",
+			"pbrMetallicRoughness":
+			{
+				"baseColorTexture":
+				{
+					"index": 9,
+					"texCoord": 2,
+					"extensions":
+					{
+						"KHR_texture_transform":
+						{
+							"offset": [
+								-0.0207135547,
+								-1.59691918
+							],
+							"scale": [
+								1.72051144,
+								2.62901163
+							]
+						}
+					}
+				},
+				"metallicFactor": 0,
+				"roughnessFactor": 0.5
+			}
+		}
+	],
+	"meshes": [
+		{
+			"name": "Set_02_Wall_Windows_3m_42",
+			"primitives": [
+				{
+					"attributes":
+					{
+						"POSITION": 1,
+						"NORMAL": 2,
+						"TANGENT": 3,
+						"TEXCOORD_0": 4,
+						"TEXCOORD_1": 5,
+						"TEXCOORD_2": 6
+					},
+					"indices": 0,
+					"material": 0
+				},
+				{
+					"attributes":
+					{
+						"POSITION": 8,
+						"NORMAL": 9,
+						"TANGENT": 10,
+						"TEXCOORD_0": 11,
+						"TEXCOORD_1": 12,
+						"TEXCOORD_2": 13
+					},
+					"indices": 7,
+					"material": 1
+				},
+				{
+					"attributes":
+					{
+						"POSITION": 15,
+						"NORMAL": 16,
+						"TANGENT": 17,
+						"TEXCOORD_0": 18,
+						"TEXCOORD_1": 19,
+						"TEXCOORD_2": 20
+					},
+					"indices": 14,
+					"material": 2
+				},
+				{
+					"attributes":
+					{
+						"POSITION": 22,
+						"NORMAL": 23,
+						"TANGENT": 24,
+						"TEXCOORD_0": 25,
+						"TEXCOORD_1": 26,
+						"TEXCOORD_2": 27
+					},
+					"indices": 21,
+					"material": 3
+				}
+			]
+		}
+	],
+	"nodes": [
+		{
+			"name": "Set_02_Wall_Windows_3m_42",
+			"translation": [
+				-11.0046978,
+				3.19999981,
+				-4.19999981
+			],
+			"mesh": 0
+		}
+	],
+	"samplers": [
+		{
+			"minFilter": 9987,
+			"magFilter": 9729
+		}
+	],
+	"scenes": [
+		{
+			"name": "Neon_Streets",
+			"nodes": [
+				0
+			]
+		}
+	],
+	"textures": [
+		{
+			"name": "MI_Wall_Plaster_04_Set_02_Wall_Windows_3m_42_BaseColor",
+			"sampler": 0,
+			"source": 0
+		},
+		{
+			"name": "MI_Wall_Plaster_04_Set_02_Wall_Windows_3m_42_MetallicRoughness",
+			"sampler": 0,
+			"source": 1
+		},
+		{
+			"name": "MI_Wall_Plaster_04_Set_02_Wall_Windows_3m_42_Normal",
+			"sampler": 0,
+			"source": 2
+		},
+		{
+			"name": "MI_Window_Frames_Set_02_Wall_Windows_3m_42_BaseColor",
+			"sampler": 0,
+			"source": 3
+		},
+		{
+			"name": "MI_Window_Frames_Set_02_Wall_Windows_3m_42_MetallicRoughness",
+			"sampler": 0,
+			"source": 4
+		},
+		{
+			"name": "MI_Window_Frames_Set_02_Wall_Windows_3m_42_Normal",
+			"sampler": 0,
+			"source": 5
+		},
+		{
+			"name": "MI_Window_Frames_Set_02_Wall_Windows_3m_42_Occlusion",
+			"sampler": 0,
+			"source": 6
+		},
+		{
+			"name": "MI_Windows_Modular_Set_02_Wall_Windows_3m_42_BaseColor",
+			"sampler": 0,
+			"source": 7
+		},
+		{
+			"name": "MI_Windows_Modular_Set_02_Wall_Windows_3m_42_Normal",
+			"sampler": 0,
+			"source": 8
+		},
+		{
+			"name": "MI_Interior_01_Off_Set_02_Wall_Windows_3m_42_BaseColor",
+			"sampler": 0,
+			"source": 9
+		}
+	],
+	"extensionsUsed": [
+		"KHR_texture_transform",
+		"KHR_materials_ior"
+	]
+}

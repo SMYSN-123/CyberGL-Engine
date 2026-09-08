@@ -9,14 +9,6 @@ uniform sampler2D gNormal;
 uniform sampler2D gAlbedo_parallaxShadow;
 uniform sampler2D gORM;
 
-// // --- 🌟 [新增] 点光源数据结构 ---
-// struct PointLight {
-//     vec3 Position;
-//     vec3 Color;
-// };
-// #define MAX_POINT_LIGHTS 32
-// uniform PointLight pointLights[MAX_POINT_LIGHTS];
-
 struct Light
 {
     vec4 Position; // w 分量可以用来区分点光源（w=1）和聚光灯（w=0）
@@ -36,13 +28,21 @@ uniform sampler2D ssaoTexture;
 // 🌧️ [新增] 全局湿度控制 (0.0 完全干燥 -> 1.0 暴雨积水)
 uniform float u_GlobalWetness;
 // 🌧️ [可选新增] 水坑遮罩纹理 (Puddle Mask)，用于让积水随机分布，而不是均匀一层
-uniform sampler2D puddleNoiseMap;
+// uniform sampler2D puddleNoiseMap;
+
+uniform float u_AmbientIntensity = 0.2; // 🌟 可调节的环境光强度 (0.0 ~ 1.0)
+
+// --- 在光照着色器最前面加上调试拦截 ---
+uniform bool u_DebugShowEmissive = false; // 这个值由 C++ 端控制传入
 
 // --- 相机与矩阵 ---
 layout (std140) uniform Matrices
 {
-    mat4 projection;
-    mat4 view; // CSM 阴影计算依然需要 View 矩阵来判断深度级联
+    mat4 projection; // 槽位0：带抖动的矩阵！(给全场所有东西画图用)
+    mat4 view;       // 槽位1：当前视图矩阵
+    mat4 cleanProj;  // 槽位2：干净无抖动投影！(专门给 G-Buffer 算当前物理坐标用)
+    mat4 prevProj;   // 槽位3：上一帧干净投影！(专门给 G-Buffer 算历史物理坐标用)
+    mat4 prevView;   // 槽位4：上一帧视图矩阵
 };
 
 layout (std140) uniform LightSpaceMatrices
@@ -158,10 +158,25 @@ float ShadowCalculation(vec3 fragPosWorld, vec3 normal, out vec3 debugColor)
 // ==========================================
 void main()
 {
+    // 🌟 第一步先拦截！
+    if (u_DebugShowEmissive)
+    {
+        // 直接从 G-Buffer 中把 GBuffer 里的 Albedo 取出（此时存的是 debugEmissive 贴图数据）
+        vec3 debugEmissive = texture(gAlbedo_parallaxShadow, TexCoords).rgb;
+        
+        // 直接输出给屏幕，跳过所有 PBR、点光源、CSM 阴影计算！
+        // 如果外墙是黑色，那说明 100% 没绑贴图。
+        // 如果外墙有颜色，那说明之前我们是把本来该发光的贴图弄丢了。
+        FragColor = vec4(debugEmissive, 1.0); 
+        return; 
+    }
+
     // 🌟 1. 从 G-Buffer 中“解包”数据 (就像读取照片像素一样简单)
     vec3 FragPos = texture(gPosition, TexCoords).rgb;
     vec3 N       = texture(gNormal, TexCoords).rgb;
-    
+
+    float emissiveMask = texture(gNormal, TexCoords).a; // 🌟 拿回我们的 Mask！
+
     // 💡 优雅的小技巧：跳过背景(天空盒)的光照计算
     // 如果法线长度接近0，说明这里没有模型渲染过，直接丢弃或输出默认颜色
     if (length(N) < 0.1) discard; 
@@ -204,6 +219,11 @@ void main()
     float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001;
     vec3 specular = nominator / denominator;
 
+    // 🌟🌟🌟 【新增这行神仙代码：物理高光限幅】 🌟🌟🌟
+    // 强行压制 GGX 公式算出来的无限大高光！
+    // 10.0 这个阈值你可以自己微调，越小闪烁越少，但水坑倒影会变暗。
+    specular = min(specular, vec3(10.0));
+
     vec3 KS = F;
     vec3 KD = vec3(1.0) - KS;
     KD *= 1.0 - metallic;
@@ -225,7 +245,7 @@ void main()
         vec3 lightPos = lights[i].Position.xyz;
         float lightRadius = lights[i].Position.w;   
         vec3 lightColor = lights[i].Color.xyz;
-        float lightIntensity = lights[i].Color.w;   
+        float lightIntensity = lights[i].Color.w;
 
         // 🌟 核心修复：千万别提前 normalize！
         vec3 L_pt = lightPos - FragPos; // 真实的距离向量
@@ -260,6 +280,11 @@ void main()
         float denominator_pt = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L_pt), 0.0) + 0.001;
         vec3 specular_pt     = nominator_pt / denominator_pt;
 
+        // 🌟🌟🌟 【新增这行神仙代码：物理高光限幅】 🌟🌟🌟
+        // 强行压制 GGX 公式算出来的无限大高光！
+        // 10.0 这个阈值你可以自己微调，越小闪烁越少，但水坑倒影会变暗。
+        specular_pt = min(specular_pt, vec3(10.0));
+
         vec3 KS_pt = F_pt;
         vec3 KD_pt = vec3(1.0) - KS_pt;
         KD_pt *= 1.0 - metallic;
@@ -285,22 +310,50 @@ void main()
 
     vec3 ambient = (KD_ambient * diffuse_ambient + specular_ambient) * finalAO;
 
-    // 🌟 保留 5% 的亮度，并且染上极其微弱的冷灰色（不要用纯蓝！）
-    vec3 nightTint = vec3(0.6, 0.7, 0.8);
-    float nightExposure = 0.05; // 🌟 5% 的亮度
+    // // 🌟 赛博朋克光污染底光 (Fake GI)
+    // float groundGlowFactor = max(0.0, dot(N, vec3(0.0, -1.0, 0.0))); 
+    // vec3 cityGlow = albedo * vec3(0.8, 0.2, 0.9) * groundGlowFactor * 0.2;
 
-    vec3 finalAmbient = ambient * nightExposure * nightTint;
-
-    // 🌟 6. 终极合成：环境光 + 主光(乘阴影) + 霓虹点光源(全亮)
+    // vec3 nightTint = vec3(0.6, 0.7, 0.8);
+    // float nightExposure = 0.05; 
     
-    vec3 color = finalAmbient + (Lo * visibility) + Lo_PointLights;
+    // vec3 finalAmbient = (ambient * nightExposure * nightTint) + cityGlow;
+
+    // vec3 pbrColor = finalAmbient + (Lo * visibility) + Lo_PointLights;
+
+    // 保持环境光纯净，只受 AO 影响
+    vec3 finalAmbient = ambient * u_AmbientIntensity;
+
+    // 最终 PBR 颜色（环境光 + 主光源 + 点光源）
+    vec3 pbrColor = finalAmbient + (Lo * visibility) + Lo_PointLights;
+
+
+    // =======================================================
+    // 🌟🌟🌟 核心修改：寻找“黄金倍率”与色彩提纯 🌟🌟🌟
+    // =======================================================
+    
+    // 1. 寻找黄金倍率：15.0f 显然太高了，引发了核爆。
+    // 我们将其降至 5.0f (你可以根据喜好在 3.0 ~ 8.0 之间微调)
+    float emissiveIntensity = 2.0f;
+    
+    // 2. 色彩提纯 (Vibrancy Boost)：
+    // 原本的 Albedo 可能比较暗沉，我们用 pow 函数让霓虹灯的颜色变得更加鲜艳纯正！
+    // vec3 neonColor = pow(albedo, vec3(0.8));
+    // 🌟 终极纯净：直接使用 Albedo 作为霓虹灯颜色，不做任何抖动或偏移！
+    vec3 neonColor = albedo;
+
+    // 3. 计算最终的自发光能量
+    vec3 emissiveLight = neonColor * emissiveMask * emissiveIntensity; 
+
+    // 物理世界的光是线性叠加的：被照亮的漫反射 + 自己发出的光
+    vec3 finalColor = pbrColor + emissiveLight;
 
     if(DEBUG_CSM_LAYER)
     {
-        FragColor = vec4(color * 0.5 + debugCascadeColor * 0.5, 1.0);
+        FragColor = vec4(pbrColor * 0.5 + debugCascadeColor * 0.5, 1.0);
     }
     else
     {
-        FragColor = vec4(color, 1.0);
+        FragColor = vec4(finalColor, 1.0);
     }
 }

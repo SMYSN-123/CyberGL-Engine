@@ -20,6 +20,10 @@
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 // 1. 这里写窗口大小改变的回调函数 (framebuffer_size_callback)
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow *window);
@@ -32,6 +36,7 @@ std::vector<glm::vec4> getFrustumCornersWorldSpace(const glm::mat4& proj, const 
 std::vector<glm::mat4> getLightSpaceMatrices();
 void renderSphere();
 float lerp(float a, float b, float f);
+float GetHaltonValue(int index, int base);
 
 RainyAlleyScene rainyAlley;
 
@@ -46,9 +51,11 @@ unsigned int hdrRBO;
 
 unsigned int screenTexture[1];                  // 普通纹理数组 (0:场景)
 
+unsigned int taaTextures[2];
+
 unsigned int postProcessTexture;
 
-unsigned int gPosition, gNormal, gAlbedo_parallaxShadow, gORM;
+unsigned int gPosition, gNormal, gAlbedo_parallaxShadow, gORM, gVelocity;
 unsigned int gRbo;
 
 unsigned int ssaoColorBuffer;
@@ -90,19 +97,22 @@ bool showDebugDepthKeyPressed = false;
 bool bloom = true;
 bool bloomKeyPressed = false;
 
+bool u_DebugEmissiveUV = false;
+bool u_DebugEmissiveUVKeyPressed = false;
+
 bool pKeyPressed = false;
 
 const unsigned int SHADOW_WIDTH = 4096;
 const unsigned int SHADOW_HEIGHT = 4096;
 
 const float cameraNearPlane = 0.1f;
-const float cameraFarPlane = 500.0f;
+const float cameraFarPlane = 1000.0f;
 
 std::vector<float> shadowCascadeLevels{cameraFarPlane / 25.0f, cameraFarPlane / 10.0f, cameraFarPlane / 2.0f, cameraFarPlane / 1.0f};
 
-const glm::vec3 lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
+const glm::vec3 lightPos(1.57174f, 23.164f, 1.64255f);
 
-const glm::vec3 lightDir = glm::normalize(glm::vec3(20.0f, 50.0f, 20.0f));
+const glm::vec3 lightDir = normalize(lightPos - camera.Position);
 
 BloomRenderer bloomRenderer;
 
@@ -140,6 +150,28 @@ int main() {
         return -1;
     }
 
+    // 🌟 初始化 ImGui
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    // 开启键盘控制 (可选)
+    // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    // 设置 ImGui 的主题风格 (经典的极客暗黑风)
+    ImGui::StyleColorsDark();
+
+    // 初始化平台/渲染器后端
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 430"); // 告诉 ImGui 你用的 OpenGL 版本
+
+    // [在这里定义 UI 变量，避免每次循环重新初始化]
+    static float ui_GlobalWetness = 0.759f;
+    static float ui_Exposure = 0.791f;
+    static bool  ui_EnableSSR = true;
+    static bool  ui_EnableVolumetric = true;
+    static bool  ui_EnableBloom = true;
+    static bool enableTAA_Jitter = true; // 你可以用 ImGui 加个开关控制它
+
     FPSCounter fpsCounter;
 
     Shader screenShader("../src/screen.vs", "../src/screen.fs");
@@ -161,6 +193,8 @@ int main() {
     Shader ssrCompositeShader("../src/screen.vs", "../src/ssr_composite.fs");
     Shader volumetricLightShader("../src/deferred_pure_pbr.vs", "../src/volumetric_light.fs");
     Shader rainShader("../src/rain.vs", "../src/rain.fs");
+    Shader taaResolveShader("../src/deferred_pure_pbr.vs", "../src/taa_resolve.fs");
+    Shader transparentForwardShader("../src/transparentForwardShader.vs", "../src/transparentForwardShader.fs");
 
     ComputeShader computeShader("../src/compute.cs");
     ComputeShader rainComputeShader("../src/rain.cs");
@@ -180,6 +214,8 @@ int main() {
 
     glDisable(GL_CULL_FACE);
 
+    glEnable(GL_PROGRAM_POINT_SIZE);
+
     unsigned int uniformBlockIndexshinerShader = glGetUniformBlockIndex(shiner.ProgramID, "Matrices");
     unsigned int uniformBlockIndexdeferredPurePBRShader_matrices = glGetUniformBlockIndex(deferredPurePBRShader.ProgramID, "Matrices");
     unsigned int uniformBlockIndexbackgroundShader = glGetUniformBlockIndex(backgroundShader.ProgramID, "Matrices");
@@ -190,6 +226,7 @@ int main() {
     unsigned int uniformBlockIndexvolumetricLightShader = glGetUniformBlockIndex(volumetricLightShader.ProgramID, "Matrices");
     unsigned int uniformBlockIndexrainShader = glGetUniformBlockIndex(rainShader.ProgramID, "Matrices");
     unsigned int uniformBlockIndexrainComputeShader = glGetUniformBlockIndex(rainComputeShader.ProgramID, "Matrices");
+    unsigned int uniformBlockIndextransparentForwardShader = glGetUniformBlockIndex(transparentForwardShader.ProgramID, "Matrices");
 
     unsigned int uniformBlockIndexcsmShadowDepthShader = glGetUniformBlockIndex(csmShadowDepthShader.ProgramID, "LightSpaceMatrices");
     unsigned int uniformBlockIndexdeferredPurePBRShader_light = glGetUniformBlockIndex(deferredPurePBRShader.ProgramID, "LightSpaceMatrices");
@@ -205,6 +242,7 @@ int main() {
     glUniformBlockBinding(ssrRayMarchingTraceShader.ProgramID, uniformBlockIndexssrRayMarchingTraceShader, 0);
     glUniformBlockBinding(rainShader.ProgramID, uniformBlockIndexrainShader, 0);
     glUniformBlockBinding(rainComputeShader.ProgramID, uniformBlockIndexrainComputeShader, 0);
+    glUniformBlockBinding(transparentForwardShader.ProgramID, uniformBlockIndextransparentForwardShader, 0);
 
     glUniformBlockBinding(csmShadowDepthShader.ProgramID, uniformBlockIndexcsmShadowDepthShader, 1);
     glUniformBlockBinding(deferredPurePBRShader.ProgramID, uniformBlockIndexdeferredPurePBRShader_light, 1);
@@ -228,7 +266,7 @@ int main() {
     // 2. 法线颜色缓冲 (使用 16F 保证法线精度，防止光照出现条带)
     glGenTextures(1, &gNormal);
     glBindTexture(GL_TEXTURE_2D, gNormal);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -246,14 +284,27 @@ int main() {
     // 4. PBR 参数缓冲 ORM (RGB，普通精度即可)
     glGenTextures(1, &gORM);
     glBindTexture(GL_TEXTURE_2D, gORM);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gORM, 0);
 
-    // 告诉 OpenGL 我们要渲染到这 4 个附件
-    unsigned int attachments[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
-    glDrawBuffers(4, attachments);
+    // 5. 创建速度贴图 gVelocity (2通道，16位浮点)
+    glGenTextures(1, &gVelocity);
+    glBindTexture(GL_TEXTURE_2D, gVelocity);
+    // 🌟 重点 1：使用 GL_RG16F，保证高精度且只占用 2 个通道的带宽
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RG, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // 🌟 重点 2：将其挂载到 GL_COLOR_ATTACHMENT4 (第5个附件)
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, gVelocity, 0);
+
+    // 告诉 OpenGL 我们要渲染到这 5 个附件
+    unsigned int attachments[5] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
+    glDrawBuffers(5, attachments);
 
     // gRbo
     glGenRenderbuffers(1, &gRbo);
@@ -295,10 +346,10 @@ int main() {
     unsigned int uboMatrices;
     glGenBuffers(1, &uboMatrices);
     glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
-    glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, 5 * sizeof(glm::mat4), NULL, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    glBindBufferRange(GL_UNIFORM_BUFFER, 0, uboMatrices, 0, 2 * sizeof(glm::mat4));
+    glBindBufferRange(GL_UNIFORM_BUFFER, 0, uboMatrices, 0, 5 * sizeof(glm::mat4));
 
     //light ubo
     unsigned int lightUboMatrices;
@@ -705,7 +756,7 @@ int main() {
         float lightRadius = 15.0f; // 路灯照亮范围较大
         float lightIntensity = 10.0f; // 亮度中等，作为环境底光
         light.Position = glm::vec4(streetLightPositions[i], lightRadius);
-        light.Color = glm::vec4(glm::vec3(150.0f, 130.0f, 90.0f) / 255.0f, lightIntensity);
+        light.Color = glm::vec4(glm::vec3(255.0f, 243.0f, 229.0f) / 255.0f, lightIntensity);
         lightData.push_back(light);
     }
 
@@ -713,40 +764,42 @@ int main() {
         glm::vec3(5.49142f, 4.71312f, -4.72402f),
         glm::vec3(4.57291f, 4.6813f, -6.17225f),
         glm::vec3(-7.14997f, 5.27681f, 3.50051f),
-        glm::vec3(6.27018f, 4.44384f, 3.54728f),
+        glm::vec3(-2.53438f, 8.28421f, 8.08619f),
         glm::vec3(8.85266f, 4.7669f, 2.07775f),
         glm::vec3(-14.1141f, 4.59362f, 2.05234f),
-        glm::vec3(-16.829f, 6.14374f, 9.94643f),
+        glm::vec3(20.7897f, -1.2781f, 4.3236f),
         glm::vec3(-23.5339f, 6.03975f, 3.09581f),
         glm::vec3(-11.0537f, 6.29027f, -3.5572f),
-        glm::vec3(-6.50755f, 11.0187f, 5.63222f) 
+        glm::vec3(-6.50755f, 11.0187f, 5.63222f),
+        glm::vec3(19.70567f, -2.16069f, 8.27421f)
     };
 
     // 🌟 新增：手动一对一指定颜色，告别取余算法！(假设颜色范围是 0~255)
     // 如果你发现图二的前两个灯颜色反了，只需要把前两个 vec3 调换一下位置即可！
     std::vector<glm::vec3> neonColors = {
-        glm::vec3(0.0f, 220.0f, 255.0f),   // 1. 高饱和度电磁青
+        glm::vec3(187.0f, 255.0f, 255.0f), // 1. 高饱和度电磁青
         glm::vec3(255.0f, 20.0f, 120.0f),  // 2. 热烈霓虹粉红
-        glm::vec3(138.0f, 43.0f, 226.0f),  // 3. 魔幻紫罗兰色
-        glm::vec3(20.0f, 180.0f, 255.0f),  // 4. 清爽冰蓝色
+        glm::vec3(255.0f, 140.0f, 0.0f),   // 3. huang
+        glm::vec3(2.0f, 250.0f, 124.0f),   // 4. lv
         glm::vec3(57.0f, 255.0f, 20.0f),   // 5. 毒气荧光绿
         glm::vec3(255.0f, 140.0f, 0.0f),   // 6. 热烈暖黄色
-        glm::vec3(0.0f, 255.0f, 180.0f),   // 7. 荧光青蓝色
-        glm::vec3(255.0f, 20.0f, 147.0f),  // 8. 深邃玫瑰粉
+        glm::vec3(255.0f, 201.0f, 64.0f),   // 7. 
+        glm::vec3(255.0f, 255.0f, 255.0f), // 8. bai
         glm::vec3(150.0f, 200.0f, 255.0f), // 9. 冷白/清蓝色
-        glm::vec3(255.0f, 0.0f, 100.0f)    // 10. 高处广告牌 (高强度赛博洋红)
+        glm::vec3(255.0f, 0.0f, 100.0f),   // 10. 高处广告牌 (高强度赛博洋红)
+        glm::vec3(0.0f, 143.0f, 199.0f)
     };
 
     // ... 在组装 lightData 的 B 阶段：
     for (size_t i = 0; i < neonPositions.size(); i++)
     {
         Light light;
-        float radius = 10.0f;  
-        float intensity = 35.0f; 
+        float radius = 10.0f;
+        float intensity = 20.0f;
 
         if (i == 9) {
-            radius = 25.0f; 
-            intensity = 45.0f;
+            radius = 10.0f;
+            intensity = 15.0f;
         }
 
         light.Position = glm::vec4(neonPositions[i], radius);
@@ -764,6 +817,45 @@ int main() {
     glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, lightSSBO, 0, lightData.size() * sizeof(Light));
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
+    // ============================================================================
+    // 🌟 TAA 历史缓冲 Ping-Pong Framebuffers 初始化
+    // ============================================================================
+    unsigned int taaFBOs[2];
+
+    glGenFramebuffers(2, taaFBOs);
+    glGenTextures(2, taaTextures);
+
+    for (unsigned int i = 0; i < 2; i++)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, taaFBOs[i]);
+        glBindTexture(GL_TEXTURE_2D, taaTextures[i]);
+        
+        // 使用 GL_RGBA16F HDR 浮点精度
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, taaTextures[i], 0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            std::cout << "ERROR::TAA_FRAMEBUFFER:: Framebuffer " << i << " is not complete!" << std::endl;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // ============================================================================
+    // 🌟 2. 准备读写指针 (Ping-Pong 句柄)
+    // ============================================================================
+    unsigned int taaReadFBO  = taaFBOs[0];
+    unsigned int taaReadTex  = taaTextures[0];
+
+    unsigned int taaWriteFBO = taaFBOs[1];
+    unsigned int taaWriteTex = taaTextures[1];
+
+    // 🌟 用一个布尔值记录：我们是否需要执行“冷启动保护”？
+    bool isTAAInitialized = false;
+
     // 解绑 VBO (可选，是个好习惯)
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
@@ -776,12 +868,14 @@ int main() {
     csmShadowDepthShader.use();
 
     gBufferShader.use();
-    gBufferShader.setInt("albedoMap", 0);
-    gBufferShader.setInt("normalMap", 1);
-    gBufferShader.setInt("depthMap", 2);
-    gBufferShader.setInt("metallicMap", 3);
-    gBufferShader.setInt("roughnessMap", 4);
-    gBufferShader.setInt("aoMap", 5);
+    // gBufferShader.setInt("albedoMap", 0);
+    // gBufferShader.setInt("normalMap", 1);
+    // gBufferShader.setInt("depthMap", 2);
+    // gBufferShader.setInt("metallicMap", 3);
+    // gBufferShader.setInt("roughnessMap", 4);
+    // gBufferShader.setInt("aoMap", 5);
+    // gBufferShader.setInt("emissiveMap", 6);
+    gBufferShader.setInt("puddleNoiseMap", 15);
 
     ssaoShader.use();
     for (unsigned int i = 0; i < 64; ++i)
@@ -805,6 +899,14 @@ int main() {
     deferredPurePBRShader.setInt("brdfLUT", 8);
     deferredPurePBRShader.setInt("shadowMap", 10);
     deferredPurePBRShader.setInt("ssaoTexture", 11);
+    // 核心修复：延迟管线同样需要采样噪音，必须与 G-Buffer 保持一致的高位槽位！
+    deferredPurePBRShader.setInt("puddleNoiseMap", 15);
+
+    transparentForwardShader.use();
+    // transparentForwardShader.setInt("albedoMap", 0);
+    // transparentForwardShader.setInt("normalMap", 1);
+    // transparentForwardShader.setInt("metallicMap", 2);
+    // transparentForwardShader.setInt("emissiveMap", 3);
 
     ssrRayMarchingTraceShader.use();
     ssrRayMarchingTraceShader.setInt("gPosition", 0);
@@ -827,17 +929,64 @@ int main() {
     screenShader.use();
     screenShader.setInt("screenTexture", 0);
 
+    // 在 while 循环外面定义一个帧计数器
+    static int frameCounter = 0;
+
+    // 在 while 循环外面定义：
+    glm::mat4 prevView = glm::mat4(1.0f);
+    glm::mat4 prevProj = glm::mat4(1.0f);
+    bool isFirstFrame = true;
+
+    static float prevJitterU = 0.0f;
+    static float prevJitterV = 0.0f;
+
     // 解绑 VAO
     glBindVertexArray(0);
 
     // --- 渲染循环 ---
-    while (!glfwWindowShouldClose(window))
+    while (!glfwWindowShouldClose(window)) 
     {
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
         processInput(window);
+
+        // =======================================================
+        // 🌟 [ImGui 新增] 第二步：每帧开头，开启新的 ImGui 帧
+        // =======================================================
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        // 构建赛博控制台面板
+        ImGui::Begin("Cyberpunk Engine Control Panel");
+        
+        ImGui::Text("Performance: %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+        ImGui::Separator();
+
+        ImGui::Text("Environment");
+        ImGui::SliderFloat("Global Wetness", &ui_GlobalWetness, 0.0f, 1.0f);
+        
+        ImGui::Text("Post-Processing & Effects");
+        ImGui::SliderFloat("Exposure", &ui_Exposure, 0.1f, 3.0f);
+        ImGui::Checkbox("Enable Bloom", &ui_EnableBloom);
+        ImGui::Checkbox("Enable SSR", &ui_EnableSSR);
+        ImGui::Checkbox("Enable Volumetric Fog", &ui_EnableVolumetric);
+        ImGui::Checkbox("Enable TAA Jitter", &enableTAA_Jitter);
+
+        ImGui::End();
+
+        // 1. 我们通常用 16 个点作为一个完整的采样周期 (16x TAA)
+        // 为什么要 +1？因为 Halton 序列的 index 传 0 会返回 0，必须从 1 开始！
+        int haltonIndex = (frameCounter % 16) + 1; 
+
+        // 2. 拿到在 [0.0, 1.0] 范围内的两个点
+        float haltonX = GetHaltonValue(haltonIndex, 2);
+        float haltonY = GetHaltonValue(haltonIndex, 3);
+        
+        // 帧数递增，留给下一帧用
+        frameCounter++;
 
         // 更新 UBO (矩阵)
         const auto lightMatrices = getLightSpaceMatrices();
@@ -848,13 +997,49 @@ int main() {
         }
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH/(float)SCR_HEIGHT, 0.1f, 1000.0f);
-        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
+        // 1. 算出【干净的】投影和视图矩阵 (绝对不要加 Halton 抖动！)
+        glm::mat4 cleanProj = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH/(float)SCR_HEIGHT, 0.1f, 1000.0f);
+        glm::mat4 cleanView = camera.GetViewMatrix();
 
-        glm::mat4 view = camera.GetViewMatrix();
+        // 如果是第一帧，上一帧就等于当前帧（防止画面初始时乱飞）
+        if (isFirstFrame)
+        {
+            prevProj = cleanProj;
+            prevView = cleanView;
+            isFirstFrame = false;
+        }
+
+        glm::mat4 jitterProj = cleanProj;
+        float jitterU = 0.0f; 
+        float jitterV = 0.0f;
+
+        if (enableTAA_Jitter)
+        {
+            float jitterX = (haltonX * 2.0f - 1.0f) / (float)SCR_WIDTH;
+            float jitterY = (haltonY * 2.0f - 1.0f) / (float)SCR_HEIGHT;
+            
+            jitterU = jitterX * 0.5f;
+            jitterV = jitterY * 0.5f;
+
+            jitterProj[2][0] += jitterX;
+            jitterProj[2][1] += jitterY;
+        }
+
+        // ==========================================
         glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
-        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(jitterProj));
+
+        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(cleanView));
+
+        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 2, sizeof(glm::mat4), glm::value_ptr(cleanProj));
+
+        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 3, sizeof(glm::mat4), glm::value_ptr(prevProj));
+
+        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 4, sizeof(glm::mat4), glm::value_ptr(prevView));
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
         // ===================================================
@@ -894,20 +1079,35 @@ int main() {
         // 🌟 Pass 2: 几何阶段 (G-Buffer Geometry Pass)
         glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
         glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
-        glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
 
+        glDepthMask(GL_TRUE);   // Masked 物体必须写深度！
+        glDisable(GL_BLEND);    // Masked 不需要混合，用 discard 处理镂空
+
         gBufferShader.use();
+
+        gBufferShader.setMat4("jitterProj", jitterProj);
 
         gBufferShader.setFloat("height_scale", 0.05f);
         gBufferShader.setBool("useParallax", false);
 
-        gBufferShader.setFloat("u_GlobalWetness", 0.35f);
+        // 🌟 [ImGui 替换] 使用滑动条控制全局湿度
+        gBufferShader.setFloat("u_GlobalWetness", ui_GlobalWetness);
 
         gBufferShader.setFloat("u_Time", currentFrame);
 
-        rainyAlley.Draw(gBufferShader, camera, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT));
+        gBufferShader.setFloat("u_DebugEmissiveUV", u_DebugEmissiveUV);
+
+        // 核心修复：在调用 rainyAlley.DrawOpaque 之前，激活高位槽并绑定噪音图！
+        // glActiveTexture(GL_TEXTURE15);
+        // glBindTexture(GL_TEXTURE_2D, puddleNoiseTexture); // 确保这个变量名对应你加载的噪音贴图 ID
+
+        // 🌟 [关键修改 1]：在 G-Buffer 阶段只画不透明网格（墙体、地面、道具）
+        rainyAlley.DrawOpaque(gBufferShader, camera, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT));
+
+        gBufferShader.setBool("isMasked", false); // 恢复默认
 
         // 🌟 Pass 2.1: 计算 SSAO 阶段
         glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
@@ -965,21 +1165,17 @@ int main() {
         deferredPurePBRShader.setVec3("lightDir", lightDir);
         
         // 1. 压暗主光：让夜晚降临！不要大太阳了，换成幽暗的月光
-        glm::vec3 moonlightColor = glm::vec3(0.05f, 0.1f, 0.2f); // 暗蓝色
+        // glm::vec3 moonlightColor = glm::vec3(0.05f, 0.1f, 0.2f); // 暗蓝色
+        glm::vec3 moonlightColor = glm::vec3(0.5f, 0.5f, 0.5f);
         deferredPurePBRShader.setVec3("lightColor", moonlightColor);
+
+        deferredPurePBRShader.setBool("u_DebugShowEmissive", false); // 设为 true 即开启排查模式
 
         // ==============================================================
         // 🌟🌟🌟 第二步：将采集到的点光源坐标和颜色传给 Shader 🌟🌟🌟
         // ==============================================================
         // 告诉 Shader 当前一共有多少盏灯
         deferredPurePBRShader.setInt("activePointLightsCount", static_cast<int>(lightData.size()));
-        
-        // // 循环遍历，把数组里的数据绑定到 Shader 的 uniform struct 数组中
-        // for (size_t i = 0; i < lightPositions.size(); i++)
-        // {
-        //     deferredPurePBRShader.setVec3("pointLights[" + std::to_string(i) + "].Position", lightPositions[i]);
-        //     deferredPurePBRShader.setVec3("pointLights[" + std::to_string(i) + "].Color", lightColors[i]);
-        // }
 
         deferredPurePBRShader.setInt("cascadeCount", static_cast<int>(shadowCascadeLevels.size()));
         for (size_t i = 0; i < shadowCascadeLevels.size(); ++i)
@@ -1003,46 +1199,49 @@ int main() {
         renderScreenQuad();
 
         // ==========================================
-        // 🌟 [新增] Pass 3.5: 全局体积光 (月光神明之光)
+        // 🌟 [ImGui 替换] Pass 3.5: 全局体积光 (月光神明之光)
         // ==========================================
-        glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO); // 继续画在 HDR 缓冲上
-        
-        // 🌟 开启加法混合！把算出来的光柱直接“叠”在建筑表面上
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_ONE, GL_ONE);
-        glDisable(GL_DEPTH_TEST); // 全屏后处理，关深度
+        if (ui_EnableVolumetric)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO); // 继续画在 HDR 缓冲上
 
-        volumetricLightShader.use();
+            // 🌟 开启加法混合！把算出来的光柱直接“叠”在建筑表面上
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE);
+            glDisable(GL_DEPTH_TEST); // 全屏后处理，关深度
 
-        // 1. 绑 G-Buffer 拿到世界坐标和法线
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, gPosition);
-        volumetricLightShader.setInt("gPosition", 0);
+            volumetricLightShader.use();
 
-        // 2. 绑 CSM 阴影阵列
-        glActiveTexture(GL_TEXTURE10);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
-        volumetricLightShader.setInt("shadowMap", 10);
+            // 1. 绑 G-Buffer 拿到世界坐标和法线
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, gPosition);
+            volumetricLightShader.setInt("gPosition", 0);
 
-        // 3. 传参：摄像机位置，月光方向，月光颜色
-        volumetricLightShader.setVec3("viewPos", camera.Position);
-        volumetricLightShader.setVec3("lightDir", lightDir);
-        // 为了让你看得明显，我们给一个贼亮的幽蓝色光柱
-        volumetricLightShader.setVec3("lightColor", glm::vec3(1.0, 1.5, 2.0)); 
+            // 2. 绑 CSM 阴影阵列
+            glActiveTexture(GL_TEXTURE10);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
+            volumetricLightShader.setInt("shadowMap", 10);
 
-        // 4. 传 CSM 的级联切割参数
-        volumetricLightShader.setInt("cascadeCount", static_cast<int>(shadowCascadeLevels.size()));
-        for (size_t i = 0; i < shadowCascadeLevels.size(); ++i) {
-            volumetricLightShader.setFloat("cascadePlaneDistances[" + std::to_string(i) + "]", shadowCascadeLevels[i]);
+            // 3. 传参：摄像机位置，月光方向，月光颜色
+            volumetricLightShader.setVec3("viewPos", camera.Position);
+            volumetricLightShader.setVec3("lightDir", lightDir);
+            // C++ 端：把月光体积光压榨到极限的暗，让它只有微弱的丁达尔效应
+            volumetricLightShader.setVec3("lightColor", glm::vec3(0.05f, 0.08f, 0.12f)); 
+
+            // 4. 传 CSM 的级联切割参数
+            volumetricLightShader.setInt("cascadeCount", static_cast<int>(shadowCascadeLevels.size()));
+            for (size_t i = 0; i < shadowCascadeLevels.size(); ++i) {
+                volumetricLightShader.setFloat("cascadePlaneDistances[" + std::to_string(i) + "]", shadowCascadeLevels[i]);
+            }
+
+            volumetricLightShader.setInt("activePointLightsCount", static_cast<int>(lightData.size()));
+
+            renderScreenQuad();
+
+            // 画完之后立刻关闭混合，恢复深度测试，防止弄坏后面的渲染！
+            glDisable(GL_BLEND);
+            glEnable(GL_DEPTH_TEST);
         }
-
-        volumetricLightShader.setInt("activePointLightsCount", static_cast<int>(lightData.size()));
-
-        renderScreenQuad();
-
-        // 画完之后立刻关闭混合，恢复深度测试，防止弄坏后面的渲染！
-        glDisable(GL_BLEND);
-        glEnable(GL_DEPTH_TEST);
 
         // 🌟 Pass 4: 深度拷贝 (Depth Blit) - 极其重要的一步！
         // 因为前面的光照阶段是在 2D 矩形上画的，hdrFBO 里没有场景的深度信息。
@@ -1051,6 +1250,36 @@ int main() {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, hdrFBO);
         glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+
+        // =================================================================
+        // 🌟🌟🌟 [全新插入] Pass 4.5: 前向半透明玻璃 Pass (Forward Transparent Pass) 🌟🌟🌟
+        // =================================================================
+        glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO); // 绘制目标为 HDR 颜色缓冲
+        
+        glDisable(GL_CULL_FACE); // 确保双面都能看到玻璃
+        glEnable(GL_BLEND);
+        // 🌟 必须使用标准 Alpha 混合
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_DEPTH_TEST);                            
+        glDepthMask(GL_FALSE); // ⚠️ 玻璃不写深度！
+
+        transparentForwardShader.use();
+        transparentForwardShader.setVec3("viewPos", camera.Position);
+        transparentForwardShader.setVec3("lightDir", lightDir);
+        transparentForwardShader.setVec3("lightColor", glm::vec3(0.05f, 0.08f, 0.12f));
+
+        // 🚀 [修复 1]: 统一命名！与 Shader 中的 "glassAlpha" 保持一致！
+        transparentForwardShader.setFloat("glassAlpha", 0.4f); 
+
+        // 🚀 [修复 2]: 必须激活玻璃逻辑，否则 Shader 把它当实体墙！
+        transparentForwardShader.setBool("isGlassMaterial", true);
+
+        // 3. 绘制半透明网格
+        rainyAlley.DrawTransparent(transparentForwardShader, camera, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT));
+
+        // 4. 恢复 OpenGL 渲染状态
+        glDepthMask(GL_TRUE);  
+        glDisable(GL_BLEND);
 
         // 🌟 Pass 5: 前向渲染阶段 (Forward Pass)
         glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
@@ -1079,98 +1308,175 @@ int main() {
             // 控制一下灯泡自身的白化程度，保留赛博色彩
             shiner.setVec3("lightColor", col * (intensity * 10.0f)); 
 
-            renderSphere(); 
+            // 🔪🔪🔪 就在这里！注释掉！杀掉这个破坏气氛的白球！
+            // renderSphere();
         }
 
         // 画月亮 (太阳)
         glm::mat4 sunModel = glm::mat4(1.0f);
-        sunModel = glm::translate(sunModel, camera.Position - lightDir * 500.0f); // 确保在天空
+        sunModel = glm::translate(sunModel, camera.Position + lightDir * 500.0f); // 确保在天空
         sunModel = glm::scale(sunModel, glm::vec3(10.0f)); // 稍微放大点
         shiner.setMat4("model", sunModel);
         shiner.setVec3("lightColor", glm::vec3(2.0, 3.0, 4.0)); // 偏冷的月光色
         renderSphere();
 
-        // ===================================================
-        // 🌧️ [新增] 前向渲染最后一步：降下暴雨！
-        // ===================================================
-        rainShader.use();
+        // 🌟 Pass 5.5: [ImGui 替换] 屏幕空间反射 (SSR) 阶段
+        if (ui_EnableSSR)
+        {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, hdrFBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
-        rainShader.setFloat("time", currentFrame);
-        rainShader.setVec3("cameraPos", camera.Position); // 🌟 传给距离渐隐使用
+            glBindTexture(GL_TEXTURE_2D, hdrColorCopyTexture);
+            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, SCR_WIDTH, SCR_HEIGHT);
+            glGenerateMipmap(GL_TEXTURE_2D); // 🔥 核心魔法：为粗糙材质准备的物理模糊！
 
-        rainShader.setInt("activePointLightsCount", static_cast<int>(lightData.size()));
+            glBindFramebuffer(GL_FRAMEBUFFER, ssrTraceFBO);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glDisable(GL_DEPTH_TEST);
 
-        glEnable(GL_BLEND);
-        // 🚨 魔法混合：改成 GL_ONE（加法混合）！
-        // 这样雨丝重叠时会变亮，极其适合表现夜晚发光的雨幕！
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+            ssrRayMarchingTraceShader.use();
+
+            // 绑定 G-Buffer
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, gPosition);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, gNormal);
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, gORM); // 需要粗糙度来决定步进精度(优化)
+
+            renderScreenQuad();
+
+            glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+
+            ssrCompositeShader.use();
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, ssrTraceTexture); // 刚算出的 SSR 字典
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, hdrColorCopyTexture); // 带有 Mipmap 的全屏 HDR 备份
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, gPosition);
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, gNormal);
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D, gORM); // PBR 粗糙度
+            glActiveTexture(GL_TEXTURE5);
+            glBindTexture(GL_TEXTURE_2D, gAlbedo_parallaxShadow);
+
+            glDisable(GL_BLEND); // 🔪 关掉它！我们要直接覆盖原像素！
+
+            renderScreenQuad();
+        }
+
+        // =================================================================
+        // 🌟🌟🌟 [全新插入] Pass 5.8: TAA 时间抗锯齿 Resolve 阶段 🌟🌟🌟
+        // =================================================================
         
-        // 🚨【非常重要】关闭深度写入！让雨丝不要互相遮挡！
-        glDepthMask(GL_FALSE); 
+        // 1. 冷启动保护：如果是第一帧，直接把 hdrFBO 的当前完美画面，原样拷贝给历史缓冲
+        if (!isTAAInitialized)
+        {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, hdrFBO);
+            
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, taaReadFBO);
+            glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, taaWriteFBO);
+            glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-        glBindVertexArray(emptyVAO);
-        // ✅ 替换为最潮的点精灵渲染指令 (注意数量也变回真实的粒子数了)：
-        glDrawArrays(GL_LINES, 0, NUM_PARTICLES * 2);
+            isTAAInitialized = true;
+        }
 
-        glBindVertexArray(0);
-        
-        glDisable(GL_BLEND);
-        glDepthMask(GL_TRUE); // 🚨 画完立刻恢复！
-        glDepthFunc(GL_LESS);
-
-        // 🌟 Pass 5.5: 屏幕空间反射 (SSR) 阶段
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, hdrFBO);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-
-        glBindTexture(GL_TEXTURE_2D, hdrColorCopyTexture);
-        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, SCR_WIDTH, SCR_HEIGHT);
-        glGenerateMipmap(GL_TEXTURE_2D); // 🔥 核心魔法：为粗糙材质准备的物理模糊！
-
-        glBindFramebuffer(GL_FRAMEBUFFER, ssrTraceFBO);
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        // 2. 正式执行 TAA 混合
+        glBindFramebuffer(GL_FRAMEBUFFER, taaWriteFBO); // 目标是当前的写缓冲
         glDisable(GL_DEPTH_TEST);
+        
+        // 这里的 taaResolveShader 是你马上要写的那个 Shader (见指南第三关)
+        taaResolveShader.use();
 
-        ssrRayMarchingTraceShader.use();
+        // ==========================================
+        // 🌟 修正：向 Shader 传递当前帧和上一帧的抖动！
+        // ==========================================
 
-        // 绑定 G-Buffer
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, gPosition);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, gNormal);
+        // 🌟 仅仅保留这一行！
+        taaResolveShader.setVec2("u_JitterUV", glm::vec2(jitterU, jitterV));
+
+        glActiveTexture(GL_TEXTURE0); 
+        glBindTexture(GL_TEXTURE_2D, screenTexture[0]); // hdrFBO 里当前刚画完的、带有狗牙的图
+        taaResolveShader.setInt("currentFrameTex", 0);
+
+        glActiveTexture(GL_TEXTURE1); 
+        glBindTexture(GL_TEXTURE_2D, taaReadTex);       // 上一帧抗好锯齿的历史图
+        taaResolveShader.setInt("historyFrameTex", 1);
+
+        glActiveTexture(GL_TEXTURE2); 
+        glBindTexture(GL_TEXTURE_2D, gVelocity);        // 第二关画出来的速度图
+        taaResolveShader.setInt("velocityTex", 2);
+
+        renderScreenQuad(); // 执行时空融合！
+
+        // ===================================================
+        // 🌧️ [管线重组] 终极视觉：在 TAA 融合完毕后，再降下暴雨！
+        // ===================================================
+        // 目标：将雨滴直接画在已经抗锯齿完毕的 taaWriteFBO 上！
+        glBindFramebuffer(GL_FRAMEBUFFER, taaWriteFBO);
+        
+        // 🌟 核心魔法 (借用深度)：taaWriteFBO 只有颜色图，没有深度图。
+        // 为了让雨滴依然能被大楼遮挡（不穿墙），我们把 G-Buffer 的深度缓冲借给它用一下！
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gRbo);
+
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE); // 雨滴是半透明的，不写入深度
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE); 
+
+        // 🌟 1. 计算当前帧相机在世界空间中的移动速度
+        static glm::vec3 lastCameraPos = camera.Position;
+        glm::vec3 cameraVelocity = (camera.Position - lastCameraPos) / deltaTime;
+        lastCameraPos = camera.Position; // 更新缓存
+
+        // 🌟 2. 绑定贴图与 Uniforms
+        rainShader.use();
+        rainShader.setFloat("time", currentFrame);
+        rainShader.setVec3("cameraPos", camera.Position);
+    
+        // 传入屏幕尺寸（用于重构像素深度 UV）
+        rainShader.setVec2("screenSize", glm::vec2(SCR_WIDTH, SCR_HEIGHT));
+
+        // 🌟 3. 传入 G-Buffer 深度和位置，用于雨丝的 Pixel-Perfect 剔除与过渡
         glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, gORM); // 需要粗糙度来决定步进精度(优化)
+        glBindTexture(GL_TEXTURE_2D, gPosition); // 你的 G-Buffer 世界位置纹理
+        rainShader.setInt("gPositionMap", 2);
 
-        renderScreenQuad();
-
-        glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-
-        ssrCompositeShader.use();
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, ssrTraceTexture); // 刚算出的 SSR 字典
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, hdrColorCopyTexture); // 带有 Mipmap 的全屏 HDR 备份
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, gPosition);
         glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D, gNormal);
-        glActiveTexture(GL_TEXTURE4);
-        glBindTexture(GL_TEXTURE_2D, gORM); // PBR 粗糙度
-        glActiveTexture(GL_TEXTURE5);
-        glBindTexture(GL_TEXTURE_2D, gAlbedo_parallaxShadow);
+        glBindTexture(GL_TEXTURE_2D, gNormal);   // 你的 G-Buffer 世界法线纹理
+        rainShader.setInt("gNormalMap", 3);
 
-        glDisable(GL_BLEND); // 🔪 关掉它！我们要直接覆盖原像素！
+        // 🌟 4. 执行绘制
+        glBindVertexArray(emptyVAO);
+        glEnable(GL_BLEND);
+        // 🚨 终极核武器：预乘 Alpha 混合！(Premultiplied Alpha)
+        // 这一步能让雨滴高光极其明亮(GL_ONE)，同时几乎不遮挡背景(GL_ONE_MINUS_SRC_ALPHA)，彻底消除发白雾霾！
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-        renderScreenQuad();
+        glDrawArrays(GL_TRIANGLES, 0, NUM_PARTICLES * 6);
+
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE); 
+        
+        // 🌟 物归原主：画完雨之后，必须解除深度绑定，保持 taaWriteFBO 纯净！
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
 
         // 🌟 Pass 6: 后期处理阶段 (Post-Processing)
         glBindFramebuffer(GL_FRAMEBUFFER, 0); // 回到默认屏幕缓冲
 
-        if (bloom) 
+        if (ui_EnableBloom) 
         {
+            // 🚨🚨🚨 【高危注意：数据源变更】 🚨🚨🚨
+            // 我们不能再拿 screenTexture[0] 去做 Bloom 了！
+            // 必须拿刚刚被 TAA 盘得无比丝滑的 taaWriteTex 去做 Bloom！
             // 0.005f 是 filterRadius，可以自己在代码里调整大小看效果
-            bloomRenderer.RenderBloomTexture(screenTexture[0], 0.005f); 
+            bloomRenderer.RenderBloomTexture(taaWriteTex, 0.005f); 
         }
 
         glDisable(GL_DEPTH_TEST);
@@ -1190,17 +1496,22 @@ int main() {
             // --- 🎨 正常后期处理 (ToneMapping + Gamma + Bloom合成) ---
             // 目标：渲染到我们刚才新建的 postProcessFBO 里
             glBindFramebuffer(GL_FRAMEBUFFER, postProcessFBO); 
-            glClearColor(0.02f, 0.02f, 0.05f, 1.0f); // 给一个极暗的夜空色
+            // glClearColor(0.02f, 0.02f, 0.05f, 1.0f); // 给一个极暗的夜空色
+            glClearColor(0.2f, 0.2f, 0.5f, 1.0f); // 给一个极暗的夜空色
+
             glClear(GL_COLOR_BUFFER_BIT);
 
             postProcessShader.use();
             postProcessShader.setFloat("offset_x", 1.0f / SCR_WIDTH);
             postProcessShader.setFloat("offset_y", 1.0f / SCR_HEIGHT);
-            postProcessShader.setFloat("exposure", 0.35f);
-            postProcessShader.setBool("bloom", bloom);
+
+            // 🌟 [ImGui 替换] 曝光度和 Bloom 开关
+            postProcessShader.setFloat("exposure", ui_Exposure);
+            postProcessShader.setBool("bloom", ui_EnableBloom);
 
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, screenTexture[0]); // 原始 HDR 场景
+            // 同样，调色 Shader 读取的底图，也必须从 screenTexture 换成 taaWriteTex！
+            glBindTexture(GL_TEXTURE_2D, taaWriteTex);
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, bloom ? bloomRenderer.BloomTexture() : 0); // 泛光
             Lens_Dirt.bind(2); // 镜头污渍
@@ -1212,7 +1523,7 @@ int main() {
             // 遍历所有路灯和霓虹灯
             for (size_t i = 0; i < lightData.size(); ++i) {
                 glm::vec3 pos = glm::vec3(lightData[i].Position);
-                glm::vec4 clip = projection * view * glm::vec4(pos, 1.0f);
+                glm::vec4 clip = cleanProj * cleanView * glm::vec4(pos, 1.0f);
                 if (clip.z > 0) { // 只算在相机前方的
                     glm::vec3 ndc = glm::vec3(clip) / clip.w;
                     lightScreenPositions.push_back(glm::vec2(ndc) * 0.5f + 0.5f);
@@ -1221,7 +1532,7 @@ int main() {
             }
 
             // 把月亮也塞进去
-            glm::vec4 sunClip = projection * view * glm::vec4(camera.Position - lightDir * 500.0f, 1.0f);
+            glm::vec4 sunClip = cleanProj * cleanView * glm::vec4(camera.Position - lightDir * 500.0f, 1.0f);
             if (sunClip.z > 0) {
                 glm::vec3 sunNDC = glm::vec3(sunClip) / sunClip.w;
                 lightScreenPositions.push_back(glm::vec2(sunNDC) * 0.5f + 0.5f);
@@ -1256,6 +1567,22 @@ int main() {
 
             renderScreenQuad(); // 最后一次绘制，完美丝滑无锯齿的画面上屏！
         }
+
+        // =======================================================
+        // 🌟 [ImGui 新增] 第三步：渲染 ImGui 面板
+        // =======================================================
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        prevProj = cleanProj;
+        prevView = cleanView;
+
+        // 🌟 留给下一帧用
+        prevJitterU = jitterU;
+        prevJitterV = jitterV;
+
+        std::swap(taaReadFBO, taaWriteFBO);
+        std::swap(taaReadTex, taaWriteTex);
 
         glEnable(GL_DEPTH_TEST);
 
@@ -1392,6 +1719,16 @@ void processInput(GLFWwindow *window)
     {
         pKeyPressed = false;
     }
+
+    if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS && !u_DebugEmissiveUVKeyPressed) 
+    {
+        u_DebugEmissiveUV = !u_DebugEmissiveUV;
+        u_DebugEmissiveUVKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_M) == GLFW_RELEASE) 
+    {
+        u_DebugEmissiveUVKeyPressed = false;
+    }
 }
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -1412,7 +1749,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
 
     glBindTexture(GL_TEXTURE_2D, gNormal);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
 
     glBindTexture(GL_TEXTURE_2D, gAlbedo_parallaxShadow);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
@@ -1421,6 +1758,9 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     // 原来的 GL_RGB 必须改为 GL_RGBA！
     glBindTexture(GL_TEXTURE_2D, gORM);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+    glBindTexture(GL_TEXTURE_2D, gVelocity);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, width, height, 0, GL_RG, GL_FLOAT, NULL);
 
     glBindRenderbuffer(GL_RENDERBUFFER, gRbo);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
@@ -1463,6 +1803,15 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 
     glBindTexture(GL_TEXTURE_2D, hdrColorCopyTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+
+    // ==========================================
+    // 8. 🌟 重置 TAA Ping-Pong 历史缓冲大小
+    // ==========================================
+    glBindTexture(GL_TEXTURE_2D, taaTextures[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    
+    glBindTexture(GL_TEXTURE_2D, taaTextures[1]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
 
     // 解绑，保持状态干净
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -1915,4 +2264,22 @@ void renderSphere()
 float lerp(float a, float b, float f)
 {
     return a + f * (b - a);
+}
+
+// 🌟 把它放在 main 函数外面
+// 参数 index: 当前是第几个采样点 (注意：必须从 1 开始，不能是 0)
+// 参数 base: 质数基底 (X轴填2，Y轴填3)
+float GetHaltonValue(int index, int base)
+{
+    float fraction = 1.0f;
+    float result = 0.0f;
+    int currentIndex = index;
+    
+    while (currentIndex > 0) 
+    {
+        fraction /= static_cast<float>(base);
+        result += static_cast<float>(currentIndex % base) * fraction;
+        currentIndex /= base;
+    }
+    return result;
 }

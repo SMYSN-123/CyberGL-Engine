@@ -1,8 +1,12 @@
 #version 330 core
 layout (location = 0) out vec3 gPosition;
-layout (location = 1) out vec3 gNormal;
+layout (location = 1) out vec4 gNormal; // 🌟 将正常的 normal 放 xyz，把白嫖来的自发光 mask 放进 w 通道！
 layout (location = 2) out vec4 gAlbedo_parallaxShadow;
 layout (location = 3) out vec4 gORM; // 借用 Alpha 通道传递水坑遮罩！
+layout (location = 4) out vec2 gVelocity;
+
+in vec4 currClipPos;
+in vec4 prevClipPos;
 
 in VS_OUT
 {
@@ -21,6 +25,8 @@ uniform sampler2D depthMap;
 uniform sampler2D metallicMap; // 如果是三合一，这其实是 ORM 贴图！
 uniform sampler2D roughnessMap;
 uniform sampler2D aoMap;
+// 🌟🌟🌟 新增：自发光贴图接收槽位！
+uniform sampler2D emissiveMap;
 
 // 其他配置
 uniform float height_scale;
@@ -42,11 +48,22 @@ uniform float roughnessValue;
 uniform bool useAOMap;
 uniform float aoValue;
 
+// 🌟🌟🌟 新增：自发光开关！
+uniform bool useEmissiveMap;
+
 // 🌧️ [新增] 全局湿度控制与噪音贴图，从光照阶段搬移到这里
 uniform float u_GlobalWetness;
-uniform sampler2D puddleNoiseMap;
+// uniform sampler2D puddleNoiseMap;
 
 uniform float u_Time; // C++ 传进来的运行时间 glfwGetTime()
+
+// --- 新增：UV 和 Emissive 排查调试开关 ---
+uniform bool u_DebugEmissiveUV = false; // C++ 端传 false/true 进来
+
+uniform vec2 uvTiling;
+
+uniform bool isMasked;
+uniform float alphaCutoff;
 
 // ==========================================
 // 🌟 黑魔法 1：3D 向量转 2D 的时空哈希函数
@@ -222,10 +239,41 @@ vec2 parallaxMapping(vec2 texCoords, vec3 viewDir, vec3 lightDir, out float para
 
 void main()
 {
-    vec2 texCoords = fs_in.TexCoords;
+    // 🌟 1. 调试拦截段
+    if (u_DebugEmissiveUV)
+    {
+        // 情况A：查看真实的 Emissive 贴图长什么样，有没有正常采样
+        vec3 debugEmissive = texture(emissiveMap, fs_in.TexCoords).rgb;
+        // 情况B：看看这个模型的 UV 到底长什么样，是不是挤在了一起或飞出去了
+        vec2 debugUV = fs_in.TexCoords; 
+
+        // 将 Emissive 输出给 G-Buffer 的 Albedo 槽位，把 UV 输出给法线槽位看看
+        // 注意：因为图里外墙没发光，如果你看到这行输出是纯黑(0,0,0)，说明贴图没绑上或者UV没指对！
+        gAlbedo_parallaxShadow = vec4(debugEmissive, 1.0); 
+        gNormal = vec4(vec3(debugUV, 0.0), 1.0); // 用颜色表示 UV，红绿通道即 UV 坐标
+        gPosition = vec3(0.0); // 跳过世界坐标
+        gORM = vec4(0.0);
+        gVelocity = vec2(0.0);
+        return; // 直接结束，不跑下面的 PBR 逻辑！
+    }
+
+    vec2 texCoords = fs_in.TexCoords * uvTiling;
 
     vec3 viewDir_Tangent = normalize(fs_in.TangentViewPos - fs_in.TangentFragPos);
     vec3 lightDir_Tangent = normalize(fs_in.TangentLightDir);
+
+    // 🌟 核心：透视除法 (Perspective Divide)
+    // 为什么在这里除？因为从 Vertex 到 Fragment 发生的光栅化插值，只有对除以 w 之后的值做插值才是透视正确的！
+    vec2 currNDC = currClipPos.xy / currClipPos.w;
+    vec2 prevNDC = prevClipPos.xy / prevClipPos.w;
+
+    // NDC 的范围是 [-1, 1]。有些 TAA 实现习惯把它映射到 [0, 1] 纹理坐标系。
+    // 我们这里为了方便，先把 NDC 映射到 [0, 1] 的 UV 坐标。
+    vec2 currUV = currNDC * 0.5 + 0.5;
+    vec2 prevUV = prevNDC * 0.5 + 0.5;
+
+    // 当前 UV 减去 历史 UV = 物体在屏幕上滑动的速度！
+    gVelocity = currUV - prevUV; 
 
     float parallaxShadow = 0.0;
     
@@ -234,33 +282,79 @@ void main()
         texCoords = parallaxMapping(texCoords, viewDir_Tangent, lightDir_Tangent, parallaxShadow);
     }
 
-    // ==========================================
-    // 🌟 全面接管：根据开关决定是读贴图还是用纯数字
-    // ==========================================
+    // =======================================================================
+    // 🌟🌟🌟 终极修复：Alpha Test (遮罩裁剪) 🌟🌟🌟
+    // =======================================================================
+    vec4 albedoTex = useAlbedoMap ? texture(albedoMap, texCoords) : vec4(albedoValue, 1.0);
 
-    // 1. 获取反照率 (Albedo)
-    vec3 albedo = useAlbedoMap ? texture(albedoMap, texCoords).rgb : albedoValue;
+    // // 🔪 真正的裁剪在这里！如果开启了遮罩且 Alpha 太低，直接丢弃像素！
+    // if (isMasked && albedoTex.a < alphaCutoff) {
+    //     discard;
+    // }
+
+    vec3 albedo = albedoTex.rgb;
+
+    // =======================================================================
+    // 🌟🌟🌟 真·工业级：只相信真实的 Emissive Map 🌟🌟🌟
+    // =======================================================================
+    float emissiveMask = 0.0;
+    vec3 emissiveColor = vec3(0.0);
+
+    if (useEmissiveMap) 
+    {
+        emissiveColor = texture(emissiveMap, texCoords).rgb;
+        
+        // 使用更符合人眼感知的亮度公式 (Luminance) 提取 Mask，比 max 更精准
+        emissiveMask = dot(emissiveColor, vec3(0.299, 0.587, 0.114));
+
+        // 🌟 核心修复 1：用 mix 直接替换底色，或者用 += 相加，绝对不要用 max()！
+        if (emissiveMask > 0.0) 
+        {
+            // 方案 A：直接相加 (适用于发光强度较高的 HDR 工作流)
+            // albedo += emissiveColor; 
+            
+            // 方案 B：平滑覆盖 (如果发光贴图只是普通的 LDR 颜色，推荐这种，防止颜色过曝变白)
+            float blendFactor = smoothstep(0.0, 0.1, emissiveMask);
+            albedo = mix(albedo, emissiveColor, blendFactor);
+        }
+    }
 
     // 2. 获取法线 (Normal)
     vec3 normal;
-    if (useNormalMap) 
+    if (useNormalMap)
     {
-        normal = texture(normalMap, texCoords).rgb;
-        normal = normal * 2.0 - 1.0;
-        normal = normalize(fs_in.TBN * normal); 
+        vec3 normalMapValue = texture(normalMap, texCoords).rgb;
+        normalMapValue = normalMapValue * 2.0 - 1.0;
+        normalMapValue.y = -normalMapValue.y;
+        
+        // --- 🛡️ 查验与矫正逻辑开始 ---
+        
+        // 1. 强行重新正交化 TBN 矩阵（防止 VS 传过来的 TBN 被非等比缩放拉扯变形）
+        vec3 N = normalize(fs_in.TBN[2]);
+        vec3 T = normalize(fs_in.TBN[0]);
+        // 施展 Gram-Schmidt 正交化魔法，强行让 T 垂直于 N
+        T = normalize(T - dot(T, N) * N);
+        // 重新计算副切线 B，确保绝对的右手/左手坐标系完美垂直
+        vec3 B = cross(N, T); 
+        mat3 perfectTBN = mat3(T, B, N);
+
+        // 2. 应用完美的 TBN
+        normal = normalize(perfectTBN * normalMapValue);
+        
+        // --- 🛡️ 查验与矫正逻辑结束 ---
     } 
     else 
     {
-        // 💡 魔法：如果没有法线贴图（比如完美金属球），直接使用极其平滑的几何法线 (TBN 矩阵的 Z 轴)
         normal = normalize(fs_in.TBN[2]);
     }
 
-    // 3. 获取 PBR 三大金刚 (ORM)
+    // 3. 获取 PBR (ORM)
     float metallic, roughness, ao;
     if (usePackedMap)
     {
+        // 完美适配 UE5 ORM: R=AO, G=Roughness, B=Metallic
         vec3 orm = texture(metallicMap, texCoords).rgb;
-        ao        = orm.r;
+        ao        = max(orm.r, 0.05); // 👈 加个 max()，就算 UE 给的是黑图，也不至于让阴影死黑！
         roughness = orm.g;
         metallic  = orm.b;
     }
@@ -276,8 +370,8 @@ void main()
     // ==========================================
     vec3 geoNormal = normalize(fs_in.TBN[2]);
     
-    // 计算受雨面：法线越朝上 (Y接近1)，淋得越湿；垂直的墙壁 (Y=0) 只能湿一点点
-    float upFactor = clamp(geoNormal.y * 0.5 + 0.5, 0.0, 1.0); 
+    // 改成这样：只有朝上的面 (Y > 0) 才会淋湿，垂直的墙面 (Y = 0) 完全不积水
+    float upFactor = clamp(geoNormal.y, 0.0, 1.0);
     
     // 生成一个微观的表面孔隙噪声，让湿润感不要太平滑死板
     float porousNoise = fract(sin(dot(fs_in.FragPos.xz, vec2(12.9898, 78.233))) * 43758.5453);
@@ -288,11 +382,19 @@ void main()
     // 🌟 物理覆写 A：变暗 (内部散射吸收)
     // 注意：纯金属不吸水（比如铁桶），只有绝缘体（如石头、木头）才会显著变暗！
     float darkeningFactor = mix(0.3, 1.0, metallic); // 非金属变暗到 30%，金属保持 100%
-    albedo = mix(albedo, albedo * darkeningFactor, wetLevel);
+
+    // 🌟 物理覆写防呆：招牌作为发光体，绝不能被雨水打湿变黑！
+    // 如果 emissiveMask 很高，那么 finalDarkening 就接近 1.0，免疫雨水变暗效应！
+    float finalDarkening = mix(darkeningFactor, 1.0, emissiveMask);
+
+    albedo = mix(albedo, albedo * finalDarkening, wetLevel);
+
+    // albedo = vec3(albedoTex.a, albedoTex.a, albedoTex.a);
 
     // 🌟 物理覆写 B：变滑 (微表面被水填平)
     // 即使是墙壁，湿了也会泛现出一点点镜面高光
-    roughness = mix(roughness, roughness * 0.2, wetLevel);
+    // 🌟 修正1：让非水坑的潮湿地面也变得很滑 (Roughness 降到 0.15 左右)
+    roughness = mix(roughness, clamp(roughness * 0.2, 0.05, 0.3), wetLevel);
 
     // ==========================================
     // 🌧️ 工业级程序化水坑系统 (Organic Procedural Puddles)
@@ -302,49 +404,40 @@ void main()
 
     if (isGround > 0.0) 
     {
-        // 💡 魔法升级：分形正弦噪声 (Fractal Sine Noise)
-        // 叠加三个不同频率的波，模拟大水坑里面套小水坑的自然边缘
         vec2 pos = fs_in.FragPos.xz;
-        float noise = sin(pos.x * 0.4) * cos(pos.y * 0.4) * 0.5 + 0.5; // 大轮廓
-        noise += sin(pos.x * 1.5 + 1.0) * cos(pos.y * 1.2 - 0.5) * 0.25; // 中细节
-        noise += sin(pos.x * 3.0 + 2.0) * cos(pos.y * 3.0 + 1.0) * 0.125; // 小碎边
-        
-        // 将 noise 严格映射回 0.0 ~ 1.0 之间
+        float noise = sin(pos.x * 0.4) * cos(pos.y * 0.4) * 0.5 + 0.5; 
+        noise += sin(pos.x * 1.5 + 1.0) * cos(pos.y * 1.2 - 0.5) * 0.25; 
+        noise += sin(pos.x * 3.0 + 2.0) * cos(pos.y * 3.0 + 1.0) * 0.125; 
         noise = clamp(noise, 0.0, 1.0);
 
-        // 🌟 解决“反过来”的核心：反转遮罩逻辑！
-        // 让 noise 的“低洼处”变成水坑。
-        // u_GlobalWetness 控制水面高度。假设设为 0.3，说明只淹没底层 30% 的低洼区域。
         float puddleMask = 1.0 - smoothstep(u_GlobalWetness - 0.05, u_GlobalWetness + 0.05, noise);
-        
-        puddleMask *= isGround; // 确保水坑只在地面上
+        puddleMask *= isGround; 
 
-        // 强行覆盖 PBR 属性，变身水面！
-        albedo = mix(albedo, albedo * 0.3, puddleMask);      // 水坑底色变暗，吸收光线
+        // 🌟 修正2：水坑底色必须更暗
+        albedo = mix(albedo, albedo * 0.25, puddleMask);      
         
-        // 真实的街道水坑边缘有一圈半湿润的过渡带，中心才是绝对光滑 (0.02)
-        roughness = mix(roughness, 0.02, puddleMask);        
-        metallic = mix(metallic, 0.0, puddleMask);           // 水绝对不是金属
+        // 🌟 修正3：深水坑必须是绝对光滑的镜面
+        roughness = mix(roughness, 0.01, puddleMask);     
+        metallic = mix(metallic, 0.0, puddleMask);           
 
-        // 🌟🌟🌟 新增：召唤涟漪神力！
-        // pos 是当前的世界 XZ 坐标。
-        // scale=3.0 控制雨滴密度，u_Time 驱动扩散动画
-        // 🌟 生成动态随机涟漪法线！
+        // 生成涟漪
         vec3 rippleNormal = ComputeRipples(pos, 4.0, u_Time);
-        float rippleIntensity = 0.8; // 涟漪的起伏强度
+        float rippleIntensity = 0.8; 
 
-        vec3 flatNormal = geoNormal;
+        // 🌟🌟🌟 核心法线修正：水坑抹平机制 (Normal Flattening) 🌟🌟🌟
+        // 水会填平柏油路的坑洼，所以水坑的法线基础必须是绝对朝上的 vec3(0,1,0)！
+        vec3 waterNormal = vec3(0.0, 1.0, 0.0);
+        
+        // 在绝对平坦的水面上加上波纹的扰动
+        waterNormal.x += rippleNormal.x * rippleIntensity;
+        waterNormal.z += rippleNormal.z * rippleIntensity;
+        waterNormal = normalize(waterNormal);
 
-        // 🌟 核心融合：把黑盒算出来的 X 和 Z 方向的波纹倾斜，加到平静的水面上！
-        // 必须乘以 puddleMask，保证干地上没有波纹！
-        flatNormal.x += rippleNormal.x * puddleMask * rippleIntensity;
-        flatNormal.z += rippleNormal.z * puddleMask * rippleIntensity;
-        flatNormal = normalize(flatNormal);
+        // 最终法线：干地用原本的粗糙法线，深水区用完美的涟漪水面法线！
+        // 只有这样，你的 SSR 才能反射出赛博朋克的霓虹倒影！
+        normal = normalize(mix(normal, waterNormal, puddleMask * 0.95)); 
 
-        // 抹平法线：积水深的地方像镜子一样平整，水浅的地方透出一点柏油路的粗糙
-        normal = normalize(mix(normal, flatNormal, puddleMask * 0.9)); 
-
-        gORM = vec4(ao, roughness, metallic, puddleMask);    // 把水坑 Mask 存入 Alpha 通道供 SSR 使用
+        gORM = vec4(ao, roughness, metallic, puddleMask);
     }
     else 
     {
@@ -353,6 +446,6 @@ void main()
 
     // 输出至 G-Buffer
     gPosition = fs_in.FragPos;
-    gNormal = normal; 
+    gNormal = vec4(normal, emissiveMask);
     gAlbedo_parallaxShadow = vec4(albedo, parallaxShadow);
 }

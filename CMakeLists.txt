@@ -34,6 +34,16 @@ add_executable(MyGraphicsEngine
     src/main.cpp 
     src/stb_image_setup.cpp
     extern/glad/src/glad.c
+
+    # 🌟 新增：将 ImGui 的核心源文件加入编译
+    src/imgui.cpp
+    src/imgui_draw.cpp
+    src/imgui_tables.cpp
+    src/imgui_widgets.cpp
+    
+    # 🌟 新增：将 ImGui 的渲染后端加入编译
+    src/imgui_impl_glfw.cpp
+    src/imgui_impl_opengl3.cpp
 )
 
 # 5. 链接库文件 (把 glfw3.lib 和 系统库 连进来)

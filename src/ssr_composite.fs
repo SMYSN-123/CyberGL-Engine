@@ -12,8 +12,11 @@ uniform sampler2D gAlbedo_parallaxShadow; // 额外传入 Albedo 和 Parallax Sh
 
 layout (std140) uniform Matrices
 {
-    mat4 projection;
-    mat4 view;
+    mat4 projection; // 槽位0：带抖动的矩阵！(给全场所有东西画图用)
+    mat4 view;       // 槽位1：当前视图矩阵
+    mat4 cleanProj;  // 槽位2：干净无抖动投影！(专门给 G-Buffer 算当前物理坐标用)
+    mat4 prevProj;   // 槽位3：上一帧干净投影！(专门给 G-Buffer 算历史物理坐标用)
+    mat4 prevView;   // 槽位4：上一帧视图矩阵
 };
 
 // PBR 菲涅尔方程
@@ -77,24 +80,24 @@ void main()
     // Schlick 近似计算当前视角的反射强度
     vec3 F = fresnelSchlick(max(dot(N, V), 0.0), F0);
 
-    // 4. 🌟 修复物理混合逻辑 🌟
-    // SSR 算出来的高光能量
-    vec3 ssrSpecular = reflectedColor * F;
+    // 🌟 赛博朋克专属作弊：强行放大积水区域的反射强度
+    if (puddleMask > 0.1) {
+        // 让水坑的反射更具侵略性，即使是俯视也能看到明显的霓虹灯
+        F = clamp(F * 3.0 + vec3(0.1), 0.0, 1.0); 
+    }
 
-    // 因为 originalColor 中【已经】包含了天空盒的 IBL 反射
-    // 当 SSR 命中时，它应该【覆盖】掉原来的 IBL 反射，而不是把整张图压暗。
-    // 在屏幕空间最平滑的做法是：基于 SSR 命中权重，用 SSR 的颜色替换原本画面中“应该是倒影”的那部分能量。
-    
-    float validSSRWeight = visibility * smoothstep(0.6, 0.2, roughness);
+    float validSSRWeight = visibility * smoothstep(0.8, 0.1, roughness); // 放宽粗糙度容忍
 
-    // 直接在原图基础上，叠加 SSR 能量，并用 F 来限制它不要过曝
-    // 这样既保留了漫反射底色，又完美融合了反射
+    // 🌟 物理覆盖与自发光增强
     vec3 finalColor = originalColor;
     if (validSSRWeight > 0.0) 
     {
-        // 软覆盖混合：按权重把原图平滑过渡到"叠加了 SSR 倒影"的画面
-        vec3 mixTarget = originalColor + ssrSpecular; 
-        finalColor = mix(originalColor, mixTarget, validSSRWeight);
+        // 反射光乘以 F 后，作为增量直接叠加，这能让霓虹灯的倒影亮得刺眼 (Bloom 会更漂亮)
+        // 降低底色(albedo)在强反射下的权重，实现"镜面"替换感
+        vec3 mixTarget = originalColor * (1.0 - F * validSSRWeight) + reflectedColor * F;
+        
+        // 额外给反射加点料，让赛博朋克高对比度更明显
+        finalColor = mix(originalColor, mixTarget, validSSRWeight * 1.5); 
     }
 
     // 暴力输出！
