@@ -11,8 +11,8 @@
 
 *A technical showcase of modern 3D rendering pipelines, loading massive UE5 commercial street assets running at ~100 FPS.*
 
-<!-- 【在这里放你 15 秒无 UI 的漫游视频 URL】 -->
-<video src="【拖入你的15秒纯享版.mp4生成的链接】" autoplay loop muted playsinline width="100%"></video>
+<!-- 15秒无 UI 漫游视频 -->
+<video src="./media/2026-09-09%2019-28-36.mp4" autoplay loop muted playsinline width="100%"></video>
 
 </div>
 
@@ -26,12 +26,11 @@ This project is built to demonstrate modern real-time rendering techniques, focu
 <!-- 【这里放你的 4 个 ImGui 对比视频，2x2 矩阵排列】 -->
 | **Screen Space Reflections (SSR)** | **Volumetric Fog** |
 | :---: | :---: |
-| <video src="【拖入SSR对比视频链接】" autoplay loop muted></video> | <video src="【拖入体积雾对比视频链接】" autoplay loop muted></video> |
-| Screen-space raymarching for highly accurate wet puddle reflections. | Raymarched scattering media interacting with multiple light sources. |
+| <video src="./media/2026-09-09%2016-09-25.mp4" autoplay loop muted></video> | <video src="./media/2026-09-10%2012-59-11.mp4" autoplay loop muted></video> |
 
 | **Physical Bloom & PBR** | **Temporal Anti-Aliasing (TAA)** |
 | :---: | :---: |
-| <video src="【拖入Bloom对比视频链接】" autoplay loop muted></video> | <video src="【拖入TAA对比视频链接】" autoplay loop muted></video> |
+| <video src="./media/2026-09-10%2012-58-47.mp4" autoplay loop muted></video> | <video src="./media/2026-09-09%2016-14-34.mp4" autoplay loop muted></video> |
 | Energy-conserving bloom combined with fully physical-based shading. | Halton-sequence jittering for temporal stability and resolving high-frequency artifacts. |
 
 ---
@@ -55,9 +54,8 @@ Designed primarily as a roaming and rendering testbed:
 
 ### Build Instructions
 ```bash
-git clone [https://github.com/YourUsername/NeonEngine.git](https://github.com/YourUsername/NeonEngine.git)
-cd NeonEngine
+git clone https://github.com/SMYSN-123/CyberGL-Engine.git
+cd CyberGL-Engine
 mkdir build && cd build
 cmake ..
 cmake --build .
-
