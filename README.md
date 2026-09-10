@@ -26,11 +26,11 @@ This project is built to demonstrate modern real-time rendering techniques, focu
 <!-- 【这里放你的 4 个 ImGui 对比视频，2x2 矩阵排列】 -->
 | **Screen Space Reflections (SSR)** | **Volumetric Fog** |
 | :---: | :---: |
-| <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2016-09-25.mp4" autoplay loop muted></video> | <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-10%2012-59-11.mp4" autoplay loop muted></video> |
+| ![SSR](https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2016-09-25.mp4) | ![Fog](https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-10%2012-59-11.mp4) |
 
 | **Physical Bloom & PBR** | **Temporal Anti-Aliasing (TAA)** |
 | :---: | :---: |
-| <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-10%2012-58-47.mp4" autoplay loop muted></video> | <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2016-14-34.mp4" autoplay loop muted></video> |
+| ![Bloom](https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-10%2012-58-47.mp4) | ![TAA](https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2016-14-34.mp4) |
 | Energy-conserving bloom combined with fully physical-based shading. | Halton-sequence jittering for temporal stability and resolving high-frequency artifacts. |
 
 ---
