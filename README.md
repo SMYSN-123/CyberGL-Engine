@@ -9,10 +9,9 @@
 [![CMake](https://img.shields.io/badge/Build-CMake-brightgreen.svg?style=flat-square&logo=cmake)](#)
 [![Dependencies](https://img.shields.io/badge/Libs-GLM%20%7C%20GLAD%20%7C%20ImGui-purple.svg?style=flat-square)](#)
 
-*A technical showcase of modern 3D rendering pipelines, loading massive UE5 commercial street assets running at ~100 FPS.*
+*A technical showcase of a modern 3D rendering pipeline, featuring massive UE5 commercial street assets running at ~100 FPS.*
 
-<!-- 15秒无 UI 漫游视频 -->
-<video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2019-28-36.mp4" autoplay loop muted playsinline width="100%"></video>
+<video src="https://github.com/user-attachments/assets/65e276b1-778e-4887-81e4-2cb506dae81d" autoplay loop muted playsinline width="100%"></video>
 
 </div>
 
@@ -20,27 +19,28 @@
 
 ## ✨ Core Features & Technical Highlights
 
-This project is built to demonstrate modern real-time rendering techniques, focusing on high-contrast cyberpunk lighting, wet surfaces, and GPU-driven systems.
+This engine demonstrates modern real-time rendering techniques with a strong emphasis on high-contrast cyberpunk lighting, physically based wet surfaces, and GPU-driven architecture.
 
-### 🔍 Interactive Rendering Debugging
-<!-- 【这里放你的 4 个 ImGui 对比视频，2x2 矩阵排列】 -->
+### 🔍 Real-Time Rendering Capabilities
+
 | **Screen Space Reflections (SSR)** | **Volumetric Fog** |
 | :---: | :---: |
-| <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2016-09-25.mp4" autoplay loop muted playsinline width="100%"></video> | <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-10%2012-59-11.mp4" autoplay loop muted playsinline width="100%"></video> |
+| <video src="https://github.com/user-attachments/assets/397e2a93-da41-40da-88b1-c8002d03491d" autoplay loop muted playsinline width="100%"></video> | <video src="https://github.com/user-attachments/assets/b8978a0d-0155-4ddd-99de-e898c304d3b7" autoplay loop muted playsinline width="100%"></video> |
+| Screen-space ray marching for accurate reflections on wet puddles and metallic surfaces. | Ray-marched volumetric fog computing scattering and attenuation from scene lights. |
 
 | **Physical Bloom & PBR** | **Temporal Anti-Aliasing (TAA)** |
 | :---: | :---: |
-| <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-10%2012-58-47.mp4" autoplay loop muted playsinline width="100%"></video> | <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2016-14-34.mp4" autoplay loop muted playsinline width="100%"></video> |
-| Energy-conserving bloom combined with fully physical-based shading. | Halton-sequence jittering for temporal stability and resolving high-frequency artifacts. |
+| <video src="https://github.com/user-attachments/assets/b8a6cdfa-b376-461b-820e-b64e349cf866" autoplay loop muted playsinline width="100%"></video> | <video src="https://github.com/user-attachments/assets/550c7a5f-1d50-475f-a2aa-1b19db36f49c" autoplay loop muted playsinline width="100%"></video> |
+| Energy-conserving physical bloom combined with a comprehensive physically based shading model. | Halton-sequence jittering for temporal stability and high-frequency artifact resolution. |
 
 ---
 
 ## ⚙️ Architecture & Implementation
 
-- **Hybrid Rendering Pipeline:** Implemented a G-Buffer based Deferred Shading pipeline for massive multi-light scenes, combined with Forward rendering for translucent materials (glass).
-- **GPU-Driven Particle System:** Utilized `Compute Shader` to simulate massive raindrop particles, performing physics and collision response directly against G-Buffer normals and depth.
-- **Asynchronous Asset Pipeline:** Built a non-blocking streaming system using `std::async` and queues to load massive UE5 scene data smoothly.
-- **Optimizations:** Implemented Frustum Culling, UBO data streaming, and rigorously debugged state leaks using RenderDoc.
+- **Hybrid Rendering Pipeline:** Features a G-Buffer-based Deferred Shading pipeline optimized for massive multi-light scenes, seamlessly integrated with a Forward rendering pass for translucent materials (e.g., glass).
+- **GPU-Driven Particle System:** Leverages `Compute Shaders` to simulate high-density raindrop particles. Physics and collision responses are calculated entirely on the GPU against G-Buffer depth and normal data.
+- **Asynchronous Asset Pipeline:** Implements a non-blocking streaming architecture utilizing `std::async` and thread-safe queues for stutter-free loading of heavyweight UE5 scene data.
+- **Performance Optimization:** Incorporates Frustum Culling and UBO data streaming. Extensively profiled and debugged using RenderDoc to eliminate state leaks and rendering bottlenecks.
 
 ---
 
@@ -50,11 +50,11 @@ This project is built to demonstrate modern real-time rendering techniques, focu
 Designed primarily as a roaming and rendering testbed:
 - `W / A / S / D` - Camera Roaming
 - `Mouse Scroll` - Zoom in / out
-- `ImGui Panel` - Real-time toggling of post-processing effects (Bloom, SSR, SSAO, Fog, etc.)
+- `ImGui Panel` - Real-time toggling of post-processing effects (Bloom, SSR, SSAO, Fog, TAA, etc.)
 
 ### Build Instructions
 ```bash
-git clone https://github.com/SMYSN-123/CyberGL-Engine.git
+git clone [https://github.com/SMYSN-123/CyberGL-Engine.git](https://github.com/SMYSN-123/CyberGL-Engine.git)
 cd CyberGL-Engine
 mkdir build && cd build
 cmake ..
