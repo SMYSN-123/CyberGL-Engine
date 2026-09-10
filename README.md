@@ -1,64 +1,63 @@
-🚀 My OpenGL Playground
+<div align="center">
 
-A modern C++ rendering engine prototype built from scratch.
-Focusing on low-level graphics programming patterns, RAII resource management, and Modern OpenGL (Core Profile).
+# 🌃 NeonEngine: Cyberpunk Renderer
 
-✨ Features (功能特性)
+**A Custom Real-Time Rendering Engine Built from Scratch with C++ & OpenGL**
 
-[x] Modern OpenGL Context: Based on GLFW & GLAD (Core Profile 3.3).
+[![C++](https://img.shields.io/badge/C++-11%2F14%2F17-blue.svg?style=flat-square&logo=c%2B%2B)](#)
+[![OpenGL](https://img.shields.io/badge/API-OpenGL-red.svg?style=flat-square&logo=opengl)](#) 
+[![CMake](https://img.shields.io/badge/Build-CMake-brightgreen.svg?style=flat-square&logo=cmake)](#)
+[![Dependencies](https://img.shields.io/badge/Libs-GLM%20%7C%20GLAD%20%7C%20ImGui-purple.svg?style=flat-square)](#)
 
-[x] Shader System: Hot-loadable shader class with error handling.
+*A technical showcase of modern 3D rendering pipelines, loading massive UE5 commercial street assets running at ~100 FPS.*
 
-[x] Texture Management: RAII-based texture loading using stb_image.
+<!-- 【在这里放你 15 秒无 UI 的漫游视频 URL】 -->
+<video src="【拖入你的15秒纯享版.mp4生成的链接】" autoplay loop muted playsinline width="100%"></video>
 
-[x] Math & Transformations: Integrated GLM for matrix operations (Translation, Rotation, Scaling).
+</div>
 
-[ ] 3D Camera System: (Coming Soon)
+---
 
-[ ] Lighting Model: (Coming Soon)
+## ✨ Core Features & Technical Highlights
 
-🛠️ Tech Stack (技术栈)
+This project is built to demonstrate modern real-time rendering techniques, focusing on high-contrast cyberpunk lighting, wet surfaces, and GPU-driven systems.
 
-Language: C++17
+### 🔍 Interactive Rendering Debugging
+<!-- 【这里放你的 4 个 ImGui 对比视频，2x2 矩阵排列】 -->
+| **Screen Space Reflections (SSR)** | **Volumetric Fog** |
+| :---: | :---: |
+| <video src="【拖入SSR对比视频链接】" autoplay loop muted></video> | <video src="【拖入体积雾对比视频链接】" autoplay loop muted></video> |
+| Screen-space raymarching for highly accurate wet puddle reflections. | Raymarched scattering media interacting with multiple light sources. |
 
-Graphics API: OpenGL 3.3
+| **Physical Bloom & PBR** | **Temporal Anti-Aliasing (TAA)** |
+| :---: | :---: |
+| <video src="【拖入Bloom对比视频链接】" autoplay loop muted></video> | <video src="【拖入TAA对比视频链接】" autoplay loop muted></video> |
+| Energy-conserving bloom combined with fully physical-based shading. | Halton-sequence jittering for temporal stability and resolving high-frequency artifacts. |
 
-Windowing: GLFW
+---
 
-Loader: GLAD
+## ⚙️ Architecture & Implementation
 
-Math: GLM
+- **Hybrid Rendering Pipeline:** Implemented a G-Buffer based Deferred Shading pipeline for massive multi-light scenes, combined with Forward rendering for translucent materials (glass).
+- **GPU-Driven Particle System:** Utilized `Compute Shader` to simulate massive raindrop particles, performing physics and collision response directly against G-Buffer normals and depth.
+- **Asynchronous Asset Pipeline:** Built a non-blocking streaming system using `std::async` and queues to load massive UE5 scene data smoothly.
+- **Optimizations:** Implemented Frustum Culling, UBO data streaming, and rigorously debugged state leaks using RenderDoc.
 
-Assets: stb_image
+---
 
-📦 Build & Run (构建指南)
+## 🚀 Getting Started
 
-This project uses CMake for cross-platform building.
+### Controls
+Designed primarily as a roaming and rendering testbed:
+- `W / A / S / D` - Camera Roaming
+- `Mouse Scroll` - Zoom in / out
+- `ImGui Panel` - Real-time toggling of post-processing effects (Bloom, SSR, SSAO, Fog, etc.)
 
-# 1. Clone the repo
-git clone [https://github.com/SMYSN-123/MyOpenGL-Playground.git](https://github.com/SMYSN-123/MyOpenGL-Playground.git)
-cd MyOpenGL-Playground
-
-# 2. Build
-mkdir build
-cd build
+### Build Instructions
+```bash
+git clone [https://github.com/YourUsername/NeonEngine.git](https://github.com/YourUsername/NeonEngine.git)
+cd NeonEngine
+mkdir build && cd build
 cmake ..
 cmake --build .
 
-# 3. Run
-./MyGraphicsEngine
-
-
-📸 Milestones (里程碑)
-
-Milestone 1: Window creation & Event Loop.
-
-Milestone 2: The first Triangle (VBO/VAO setup).
-
-Milestone 3: Shader Class encapsulation.
-
-Milestone 4: Texture mapping support.
-
-Milestone 5: Matrix Transformations (Rotating Crates).
-
-Created by [Li Mingzhi] - 2026
