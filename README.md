@@ -12,7 +12,7 @@
 *A technical showcase of modern 3D rendering pipelines, loading massive UE5 commercial street assets running at ~100 FPS.*
 
 <!-- 15秒无 UI 漫游视频 -->
-<video src="./media/2026-09-09%2019-28-36.mp4" autoplay loop muted playsinline width="100%"></video>
+<video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2019-28-36.mp4" autoplay loop muted playsinline width="100%"></video>
 
 </div>
 
@@ -26,11 +26,11 @@ This project is built to demonstrate modern real-time rendering techniques, focu
 <!-- 【这里放你的 4 个 ImGui 对比视频，2x2 矩阵排列】 -->
 | **Screen Space Reflections (SSR)** | **Volumetric Fog** |
 | :---: | :---: |
-| <video src="./media/2026-09-09%2016-09-25.mp4" autoplay loop muted></video> | <video src="./media/2026-09-10%2012-59-11.mp4" autoplay loop muted></video> |
+| <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2016-09-25.mp4" autoplay loop muted></video> | <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-10%2012-59-11.mp4" autoplay loop muted></video> |
 
 | **Physical Bloom & PBR** | **Temporal Anti-Aliasing (TAA)** |
 | :---: | :---: |
-| <video src="./media/2026-09-10%2012-58-47.mp4" autoplay loop muted></video> | <video src="./media/2026-09-09%2016-14-34.mp4" autoplay loop muted></video> |
+| <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-10%2012-58-47.mp4" autoplay loop muted></video> | <video src="https://github.com/SMYSN-123/CyberGL-Engine/raw/main/media/2026-09-09%2016-14-34.mp4" autoplay loop muted></video> |
 | Energy-conserving bloom combined with fully physical-based shading. | Halton-sequence jittering for temporal stability and resolving high-frequency artifacts. |
 
 ---
